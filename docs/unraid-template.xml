@@ -13,7 +13,7 @@
   <Category>MediaApp:Video Tools:</Category>
   <WebUI>http://[IP]:[PORT:7879]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/btoth525/Fightarr/main/docs/unraid-template.xml</TemplateURL>
-  <Icon>https://raw.githubusercontent.com/btoth525/Fightarr/main/frontend/public/logo.svg</Icon>
+  <Icon>https://raw.githubusercontent.com/btoth525/Fightarr/main/frontend/public/logo.png</Icon>
   <ExtraParams/>
   <PostArgs/>
   <CPUset/>
