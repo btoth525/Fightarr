@@ -10,6 +10,7 @@ Architecture:
   4. Score releases (resolution, codec, size, prelims/main filters)
   5. Pick best release, push to SABnzbd, create QueueItem
 """
+
 import logging
 
 logger = logging.getLogger(__name__)

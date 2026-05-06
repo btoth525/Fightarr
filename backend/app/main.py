@@ -4,12 +4,13 @@ This is the FastAPI entry point. It wires up the database, the routers, and
 the background scheduler that periodically refreshes UFC event data from
 upstream sources (Wikipedia, UFCStats).
 """
+
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import events, health, indexers, queue, settings_api
+from app.api import download_clients, events, health, indexers, queue, settings_api
 from app.core.config import settings
 from app.core.database import init_db
 from app.core.scheduler import start_scheduler, stop_scheduler
@@ -46,6 +47,7 @@ API_PREFIX = "/api/v1"
 app.include_router(health.router, prefix=API_PREFIX, tags=["health"])
 app.include_router(events.router, prefix=API_PREFIX, tags=["events"])
 app.include_router(indexers.router, prefix=API_PREFIX, tags=["indexers"])
+app.include_router(download_clients.router, prefix=API_PREFIX, tags=["download-clients"])
 app.include_router(queue.router, prefix=API_PREFIX, tags=["queue"])
 app.include_router(settings_api.router, prefix=API_PREFIX, tags=["settings"])
 

@@ -1,17 +1,19 @@
 """Indexer management endpoints."""
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
-from app.models.indexer import Indexer
+from app.models.indexer import Indexer, IndexerType
 
 router = APIRouter()
 
 
 class IndexerIn(BaseModel):
     name: str
+    indexer_type: IndexerType = IndexerType.NEWZNAB
     url: str
     api_key: str
     enabled: bool = True
@@ -43,9 +45,7 @@ async def create_indexer(
 
 
 @router.delete("/indexer/{indexer_id}", status_code=204)
-async def delete_indexer(
-    indexer_id: int, session: AsyncSession = Depends(get_session)
-) -> None:
+async def delete_indexer(indexer_id: int, session: AsyncSession = Depends(get_session)) -> None:
     obj = await session.get(Indexer, indexer_id)
     if obj is None:
         raise HTTPException(status_code=404, detail="Indexer not found")

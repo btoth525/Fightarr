@@ -4,6 +4,7 @@ Uses APScheduler to periodically refresh the UFC schedule from Wikipedia and
 search indexers for releases of upcoming/recent events. Jobs are added here
 but kept thin — the actual work lives in app.services.
 """
+
 import logging
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -25,8 +26,8 @@ def start_scheduler() -> None:
     _scheduler = AsyncIOScheduler()
 
     # Lazy imports so this module stays import-cheap
-    from app.services.schedule_sync import sync_schedule
     from app.services.indexer_search import search_all_wanted
+    from app.services.schedule_sync import sync_schedule
 
     _scheduler.add_job(
         sync_schedule,

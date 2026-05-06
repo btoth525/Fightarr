@@ -8,6 +8,7 @@ import {
   Server,
 } from "lucide-react";
 import clsx from "clsx";
+import logoUrl from "/logo.svg";
 
 const navItems = [
   { to: "/events", label: "Events", icon: Swords },
@@ -22,11 +23,9 @@ export default function Sidebar() {
   return (
     <aside className="w-52 shrink-0 bg-bg-panel border-r border-border flex flex-col">
       <div className="px-4 py-5 border-b border-border">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded bg-accent flex items-center justify-center">
-            <Swords size={16} className="text-black" strokeWidth={2.5} />
-          </div>
-          <div className="font-semibold text-text-bright tracking-tight">
+        <div className="flex items-center gap-2.5">
+          <img src={logoUrl} alt="Fightarr" className="w-8 h-8 rounded-lg" />
+          <div className="font-semibold text-text-bright tracking-tight text-base">
             Fightarr
           </div>
         </div>

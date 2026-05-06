@@ -1,4 +1,5 @@
 """Application configuration loaded from environment variables."""
+
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict

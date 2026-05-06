@@ -10,6 +10,7 @@ The structure is reasonably stable across years.
 
 Output: list of ScrapedEvent dataclasses, ready to be merged into the DB.
 """
+
 from __future__ import annotations
 
 import logging
@@ -208,7 +209,7 @@ def _extract_main_event(title: str) -> str | None:
 
 def _clean(text: str) -> str:
     """Normalize whitespace and strip Wikipedia citation markers."""
-    text = re.sub(r"\[\d+\]", "", text)         # [1], [2]
+    text = re.sub(r"\[\d+\]", "", text)  # [1], [2]
     text = re.sub(r"\[note\s*\d+\]", "", text)  # [note 1]
     text = re.sub(r"\s+", " ", text).strip()
     return text

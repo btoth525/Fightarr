@@ -4,6 +4,7 @@ An "event" is one fight card — UFC 300, UFC Fight Night: Hill vs Pereira,
 UFC on ABC 6, etc. Each event has a date, a venue, a main event, and a
 status that tracks its lifecycle through the system.
 """
+
 from datetime import date, datetime
 from enum import Enum
 
@@ -16,21 +17,21 @@ from app.core.database import Base
 class EventStatus(str, Enum):
     """Lifecycle states for an event, mirroring Radarr's movie statuses."""
 
-    ANNOUNCED = "announced"   # On the schedule, in the future
-    UPCOMING = "upcoming"     # Within search window (e.g. 7 days out)
-    AIRING = "airing"         # Happening today
-    RELEASED = "released"     # Aired, looking for downloads
-    DOWNLOADED = "downloaded" # Have a file
-    MISSING = "missing"       # Aired, monitored, no file
+    ANNOUNCED = "announced"  # On the schedule, in the future
+    UPCOMING = "upcoming"  # Within search window (e.g. 7 days out)
+    AIRING = "airing"  # Happening today
+    RELEASED = "released"  # Aired, looking for downloads
+    DOWNLOADED = "downloaded"  # Have a file
+    MISSING = "missing"  # Aired, monitored, no file
 
 
 class EventType(str, Enum):
     """UFC event categories."""
 
-    PPV = "ppv"               # Numbered events (UFC 300)
+    PPV = "ppv"  # Numbered events (UFC 300)
     FIGHT_NIGHT = "fight_night"  # Fight Night cards
-    ON_ABC = "on_abc"         # UFC on ABC / Fox / ESPN specials
-    TUF_FINALE = "tuf_finale" # The Ultimate Fighter finales
+    ON_ABC = "on_abc"  # UFC on ABC / Fox / ESPN specials
+    TUF_FINALE = "tuf_finale"  # The Ultimate Fighter finales
     OTHER = "other"
 
 

@@ -1,4 +1,5 @@
 """Download queue endpoints."""
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -22,7 +23,5 @@ class QueueItemOut(BaseModel):
 
 @router.get("/queue", response_model=list[QueueItemOut])
 async def list_queue(session: AsyncSession = Depends(get_session)) -> list[QueueItem]:
-    result = await session.execute(
-        select(QueueItem).order_by(QueueItem.grabbed_at.desc())
-    )
+    result = await session.execute(select(QueueItem).order_by(QueueItem.grabbed_at.desc()))
     return list(result.scalars().all())

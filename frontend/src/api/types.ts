@@ -37,12 +37,36 @@ export interface QueueItem {
   progress_percent: number;
 }
 
+export type IndexerType = "newznab" | "torznab";
+
 export interface Indexer {
   id: number;
   name: string;
+  indexer_type: IndexerType;
   url: string;
   api_key: string;
   enabled: boolean;
   priority: number;
   categories: string;
+}
+
+export type DownloadClientType =
+  | "sabnzbd"
+  | "nzbget"
+  | "qbittorrent"
+  | "deluge"
+  | "transmission"
+  | "real_debrid";
+
+export interface DownloadClient {
+  id: number;
+  name: string;
+  client_type: DownloadClientType;
+  host: string;
+  api_key: string | null;
+  username: string | null;
+  password: string | null;
+  category: string;
+  enabled: boolean;
+  priority: number;
 }

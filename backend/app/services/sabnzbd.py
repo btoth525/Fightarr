@@ -5,6 +5,7 @@ SABnzbd's API is a single endpoint with a `mode` query param:
 
 Stub for now — flesh out in a follow-up PR.
 """
+
 from __future__ import annotations
 
 

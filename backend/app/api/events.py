@@ -2,6 +2,7 @@
 
 This is the rough equivalent of Radarr's /movie endpoints.
 """
+
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -59,9 +60,7 @@ async def list_events(
 
 
 @router.get("/event/{event_id}", response_model=EventOut)
-async def get_event(
-    event_id: int, session: AsyncSession = Depends(get_session)
-) -> Event:
+async def get_event(event_id: int, session: AsyncSession = Depends(get_session)) -> Event:
     event = await session.get(Event, event_id)
     if event is None:
         raise HTTPException(status_code=404, detail="Event not found")

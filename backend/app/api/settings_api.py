@@ -2,6 +2,7 @@
 
 Stubbed for now. Backed by a small key/value config table in a future PR.
 """
+
 from fastapi import APIRouter
 from pydantic import BaseModel
 

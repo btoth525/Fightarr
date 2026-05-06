@@ -4,6 +4,7 @@ Pulls UFC events from Wikipedia and upserts them into the database.
 Idempotent: safe to run repeatedly. Existing events are updated in place
 based on slug; new events are inserted.
 """
+
 import logging
 from datetime import date
 
@@ -57,9 +58,7 @@ async def _merge_events(scraped: list[ScrapedEvent]) -> int:
                 # Skip TBD events for now — we'll surface them in a later PR
                 continue
 
-            existing = await session.execute(
-                select(Event).where(Event.slug == s.slug)
-            )
+            existing = await session.execute(select(Event).where(Event.slug == s.slug))
             existing = existing.scalar_one_or_none()
 
             status = _derive_status(s.event_date, today, has_existing=existing is not None)
