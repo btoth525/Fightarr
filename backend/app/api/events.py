@@ -130,7 +130,9 @@ async def refresh_event_metadata(
         raise HTTPException(status_code=404, detail="Event not found")
 
     year = event.event_date.year if event.event_date else None
-    poster_url, tmdb_id = await fetch_event_poster(event.title, year, settings.tmdb_api_key)
+    poster_url, tmdb_id = await fetch_event_poster(
+        event.title, year, settings.tmdb_api_key, source_url=event.source_url
+    )
 
     if poster_url:
         event.poster_url = poster_url
@@ -158,7 +160,9 @@ async def trigger_metadata_refresh(session: AsyncSession = Depends(get_session))
     updated = 0
     for event in events:
         year = event.event_date.year if event.event_date else None
-        poster_url, tmdb_id = await fetch_event_poster(event.title, year, settings.tmdb_api_key)
+        poster_url, tmdb_id = await fetch_event_poster(
+            event.title, year, settings.tmdb_api_key, source_url=event.source_url
+        )
         if poster_url:
             event.poster_url = poster_url
             event.tmdb_id = tmdb_id

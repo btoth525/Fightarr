@@ -453,17 +453,17 @@ function DownloadClientForm({
 // ─── Metadata ─────────────────────────────────────────────────────────────────
 
 function MetadataSection() {
-  const [testStatus, setTestStatus] = useState<"idle" | "testing" | "ok" | "fail">("idle");
+  const [tmdbStatus, setTmdbStatus] = useState<"idle" | "testing" | "ok" | "fail">("idle");
 
-  async function handleTest() {
-    setTestStatus("testing");
+  async function handleTmdbTest() {
+    setTmdbStatus("testing");
     try {
       const r = await api.post<{ success: boolean }>("/settings/metadata/test");
-      setTestStatus(r.success ? "ok" : "fail");
+      setTmdbStatus(r.success ? "ok" : "fail");
     } catch {
-      setTestStatus("fail");
+      setTmdbStatus("fail");
     }
-    setTimeout(() => setTestStatus("idle"), 3000);
+    setTimeout(() => setTmdbStatus("idle"), 3000);
   }
 
   return (
@@ -471,24 +471,44 @@ function MetadataSection() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="font-semibold text-text-bright">Metadata</h2>
-          <p className="text-xs text-text-muted mt-0.5">
-            TMDB — poster art and event metadata
-          </p>
+          <p className="text-xs text-text-muted mt-0.5">Poster art sources</p>
         </div>
         <Film size={16} className="text-text-dim" />
       </div>
 
       <div className="border-t border-border pt-3 space-y-3">
+        {/* Wikipedia — always active */}
+        <div className="flex items-start gap-3">
+          <div className="flex-1 space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-text-bright">Wikipedia</span>
+              <span className="px-1.5 py-0.5 text-[10px] rounded bg-green-900/40 text-green-300 uppercase tracking-wide font-medium">
+                Active · No key needed
+              </span>
+            </div>
+            <p className="text-xs text-text-muted">
+              Poster art from each event's Wikipedia article. Works out of the box —
+              no configuration required.
+            </p>
+          </div>
+        </div>
+
+        {/* TMDB — optional */}
         <div className="flex items-start gap-3">
           <div className="flex-1 space-y-1">
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium text-text-bright">TMDB</span>
               <span className="px-1.5 py-0.5 text-[10px] rounded bg-yellow-900/40 text-yellow-300 uppercase tracking-wide font-medium">
-                The Movie Database
+                Optional
               </span>
             </div>
             <p className="text-xs text-text-muted">
-              Provides cover art for event cards. Get a free API key at{" "}
+              Official promotional posters from The Movie Database. Higher quality
+              for numbered PPVs. Set{" "}
+              <code className="text-text font-mono text-[11px] bg-bg-input px-1 rounded">
+                FIGHTARR_TMDB_API_KEY
+              </code>{" "}
+              to enable — free key at{" "}
               <a
                 href="https://www.themoviedb.org/settings/api"
                 target="_blank"
@@ -497,32 +517,28 @@ function MetadataSection() {
               >
                 themoviedb.org
               </a>
-              . Set via{" "}
-              <code className="text-text font-mono text-[11px] bg-bg-input px-1 rounded">
-                FIGHTARR_TMDB_API_KEY
-              </code>{" "}
-              env var.
+              .
             </p>
           </div>
 
           <button
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded border text-sm ${
-              testStatus === "ok"
+            className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded border text-sm ${
+              tmdbStatus === "ok"
                 ? "border-status-downloaded text-status-downloaded"
-                : testStatus === "fail"
+                : tmdbStatus === "fail"
                 ? "border-status-missing text-status-missing"
                 : "border-border text-text-muted hover:text-text"
             }`}
-            onClick={handleTest}
-            disabled={testStatus === "testing"}
+            onClick={handleTmdbTest}
+            disabled={tmdbStatus === "testing"}
           >
-            <Wifi size={13} className={testStatus === "testing" ? "animate-pulse" : ""} />
-            {testStatus === "testing"
+            <Wifi size={13} className={tmdbStatus === "testing" ? "animate-pulse" : ""} />
+            {tmdbStatus === "testing"
               ? "Testing…"
-              : testStatus === "ok"
+              : tmdbStatus === "ok"
               ? "Connected"
-              : testStatus === "fail"
-              ? "Failed"
+              : tmdbStatus === "fail"
+              ? "No key"
               : "Test"}
           </button>
         </div>

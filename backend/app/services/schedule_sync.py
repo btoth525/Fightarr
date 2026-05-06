@@ -120,7 +120,7 @@ async def _backfill_posters() -> None:
             year = event.event_date.year if event.event_date else None
             try:
                 poster_url, tmdb_id = await fetch_event_poster(
-                    event.title, year, settings.tmdb_api_key
+                    event.title, year, settings.tmdb_api_key, source_url=event.source_url
                 )
                 if poster_url:
                     event.poster_url = poster_url
