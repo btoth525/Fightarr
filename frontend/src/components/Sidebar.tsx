@@ -8,7 +8,8 @@ import {
   Server,
 } from "lucide-react";
 import clsx from "clsx";
-import logoUrl from "/logo.svg";
+
+const logoUrl = "/logo.svg";
 
 const navItems = [
   { to: "/events", label: "Events", icon: Swords },
