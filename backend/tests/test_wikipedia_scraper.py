@@ -3,6 +3,7 @@
 Uses a small synthetic HTML fixture rather than hitting Wikipedia in tests.
 The fixture mirrors the table structure of {YEAR}_in_UFC pages.
 """
+
 from app.scrapers.wikipedia import _parse_year_page
 
 
