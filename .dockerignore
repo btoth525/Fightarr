@@ -1,0 +1,17 @@
+**/.git
+**/.github
+**/node_modules
+**/dist
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
+backend/tests
+backend/fightarr.db
+backend/.env
+**/media
+docker-compose*.yml
+docs/
+*.md

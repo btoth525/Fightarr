@@ -89,21 +89,32 @@ Full roadmap: [docs/ROADMAP.md](docs/ROADMAP.md)
 
 ## Quickstart
 
-### Docker (recommended)
+### Docker (recommended — single container)
+
+```bash
+docker run -d \
+  --name fightarr \
+  -p 7878:7878 \
+  -v /your/config:/config \
+  -v /your/ufc/media:/media \
+  ghcr.io/btoth525/fightarr:latest
+```
+
+| URL | Purpose |
+|---|---|
+| http://localhost:7878 | Web UI |
+| http://localhost:7878/api/v1 | REST API |
+| http://localhost:7878/docs | Swagger |
+
+> Port 7878 matches Radarr's default — no muscle-memory retraining required.
+
+### Docker Compose (dev)
 
 ```bash
 git clone https://github.com/btoth525/Fightarr
 cd Fightarr
 docker compose up --build
 ```
-
-| Service | URL |
-|---|---|
-| Web UI | http://localhost:5173 |
-| Backend API | http://localhost:7878/api/v1 |
-| Swagger docs | http://localhost:7878/docs |
-
-> Port 7878 matches Radarr's default — no muscle-memory retraining required.
 
 ### Manual (development)
 
@@ -158,22 +169,23 @@ npm run dev
 
 ## Unraid
 
-Fightarr is designed to live in your Unraid tower alongside Radarr, Sonarr, and SABnzbd. The production image (in progress) will follow `linuxserver.io` conventions:
+Fightarr is built to live in your Unraid tower alongside Radarr, Sonarr, and SABnzbd. Pull it from GHCR and map two folders:
 
 ```yaml
-environment:
-  - PUID=1000
-  - PGID=1000
-  - TZ=America/New_York
-volumes:
-  - /mnt/user/appdata/fightarr:/config
-  - /mnt/user/data/usenet/complete:/downloads:ro
-  - /mnt/user/media/ufc:/media
-ports:
-  - 7878:7878
+# In Unraid → Docker → Add Container
+Image: ghcr.io/btoth525/fightarr:latest
+Port: 7878 → 7878
+
+Volumes:
+  /mnt/user/appdata/fightarr  →  /config   (stores the SQLite database)
+  /mnt/user/media/ufc         →  /media    (your UFC library)
+
+Environment (optional):
+  FIGHTARR_TMDB_API_KEY  =  <your key if you want TMDB posters>
+  FIGHTARR_LOG_LEVEL     =  INFO
 ```
 
-A Community Applications template will be submitted once the download loop is working end-to-end. See [docs/UNRAID.md](docs/UNRAID.md) (coming soon).
+A Community Applications template will be submitted once the search loop ships end-to-end.
 
 ---
 
