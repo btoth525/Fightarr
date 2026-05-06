@@ -1,0 +1,60 @@
+"""Fightarr — UFC event manager for Usenet and Plex.
+
+This is the FastAPI entry point. It wires up the database, the routers, and
+the background scheduler that periodically refreshes UFC event data from
+upstream sources (Wikipedia, UFCStats).
+"""
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.api import events, health, indexers, queue, settings_api
+from app.core.config import settings
+from app.core.database import init_db
+from app.core.scheduler import start_scheduler, stop_scheduler
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Run on startup and shutdown."""
+    await init_db()
+    start_scheduler()
+    yield
+    stop_scheduler()
+
+
+app = FastAPI(
+    title="Fightarr",
+    description="UFC event manager for Usenet and Plex.",
+    version="0.0.1",
+    lifespan=lifespan,
+)
+
+# CORS — wide open in dev; tighten for prod
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Routers — mirror Radarr's /api/v3 shape but at /api/v1 to keep our own versioning
+API_PREFIX = "/api/v1"
+
+app.include_router(health.router, prefix=API_PREFIX, tags=["health"])
+app.include_router(events.router, prefix=API_PREFIX, tags=["events"])
+app.include_router(indexers.router, prefix=API_PREFIX, tags=["indexers"])
+app.include_router(queue.router, prefix=API_PREFIX, tags=["queue"])
+app.include_router(settings_api.router, prefix=API_PREFIX, tags=["settings"])
+
+
+@app.get("/")
+async def root():
+    return {
+        "app": "Fightarr",
+        "version": "0.0.1",
+        "docs": "/docs",
+        "api": API_PREFIX,
+    }

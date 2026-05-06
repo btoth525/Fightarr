@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:newznab="http://www.newznab.com/DTD/2010/feeds/attributes/">
+  <channel>
+    <title>NZBGeek</title>
+    <description>NZBGeek API Results</description>
+    <newznab:response offset="0" total="3"/>
+
+    <!-- Item 1: size comes from newznab:attr (preferred path) -->
+    <item>
+      <title>UFC.300.Pereira.vs.Hill.1080p.WEB-DL.H264-GROUP</title>
+      <link>https://nzbgeek.info/details/abc123</link>
+      <pubDate>Sat, 13 Apr 2024 22:00:00 +0000</pubDate>
+      <guid isPermaLink="true">https://nzbgeek.info/details/abc123</guid>
+      <enclosure url="https://nzbgeek.info/api?t=get&amp;id=abc123&amp;apikey=key" length="0" type="application/x-nzb"/>
+      <newznab:attr name="category" value="5070"/>
+      <newznab:attr name="size" value="6442450944"/>
+    </item>
+
+    <!-- Item 2: no newznab:attr size — falls back to enclosure length -->
+    <item>
+      <title>UFC.300.Pereira.vs.Hill.720p.WEB-DL.H264-GROUP</title>
+      <link>https://nzbgeek.info/details/def456</link>
+      <pubDate>Sat, 13 Apr 2024 21:45:00 +0000</pubDate>
+      <guid isPermaLink="true">https://nzbgeek.info/details/def456</guid>
+      <enclosure url="https://nzbgeek.info/api?t=get&amp;id=def456&amp;apikey=key" length="3221225472" type="application/x-nzb"/>
+      <newznab:attr name="category" value="5070"/>
+    </item>
+
+    <!-- Item 3: no enclosure — must be skipped -->
+    <item>
+      <title>UFC.300.Pereira.vs.Hill.HDTV.x264-GROUP</title>
+      <link>https://nzbgeek.info/details/ghi789</link>
+      <pubDate>Sat, 13 Apr 2024 21:30:00 +0000</pubDate>
+      <guid isPermaLink="true">https://nzbgeek.info/details/ghi789</guid>
+    </item>
+
+  </channel>
+</rss>

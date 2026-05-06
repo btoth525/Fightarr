@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+  }
+
+  body {
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Scrollbar — match the dark aesthetic so it doesn't break the feel */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #1a1a1a;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #3a3a3a;
+    border-radius: 5px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #4a4a4a;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center gap-2 px-3 py-1.5 rounded text-sm font-medium
+           border border-border bg-bg-panel text-text
+           hover:bg-bg-elevated hover:border-border-strong
+           transition-colors;
+  }
+
+  .btn-primary {
+    @apply bg-accent border-accent text-black hover:bg-accent-hover hover:border-accent-hover;
+  }
+
+  .card {
+    @apply bg-bg-panel border border-border rounded;
+  }
+
+  .input {
+    @apply bg-bg-input border border-border rounded px-2 py-1.5 text-text
+           focus:outline-none focus:border-accent;
+  }
+}
