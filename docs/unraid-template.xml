@@ -11,7 +11,7 @@
   <Project>https://github.com/btoth525/Fightarr</Project>
   <Overview>UFC event manager for Usenet and Plex. Automatically searches, grabs, renames, and imports UFC fight cards — the Radarr for UFC that Radarr refuses to be.</Overview>
   <Category>MediaApp:Video Tools:</Category>
-  <WebUI>http://[IP]:[PORT:7878]/</WebUI>
+  <WebUI>http://[IP]:[PORT:7879]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/btoth525/Fightarr/main/docs/unraid-template.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/btoth525/Fightarr/main/frontend/public/logo.svg</Icon>
   <ExtraParams/>
@@ -21,7 +21,7 @@
   <DonateText/>
   <DonateLink/>
   <Requires/>
-  <Config Name="WebUI Port" Target="7878" Default="7878" Mode="tcp" Description="Web UI and API port. Access Fightarr at http://[IP]:[PORT:7878]/" Type="Port" Display="always" Required="true" Mask="false">7878</Config>
+  <Config Name="WebUI Port" Target="7878" Default="7879" Mode="tcp" Description="Web UI and API port. Use 7879 to avoid conflict with Radarr (which also uses 7878). Access Fightarr at http://[IP]:[PORT:7879]/" Type="Port" Display="always" Required="true" Mask="false">7879</Config>
   <Config Name="Config" Target="/config" Default="/mnt/user/appdata/fightarr" Mode="rw" Description="Stores the SQLite database and application config." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/fightarr</Config>
   <Config Name="Media" Target="/media" Default="/mnt/user/media/ufc" Mode="rw" Description="UFC media library. Fightarr renames and imports fight cards here." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/media/ufc</Config>
   <Config Name="Log Level" Target="FIGHTARR_LOG_LEVEL" Default="INFO" Mode="" Description="Logging verbosity: DEBUG, INFO, WARNING, ERROR" Type="Variable" Display="always" Required="false" Mask="false">INFO</Config>
