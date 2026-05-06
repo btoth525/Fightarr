@@ -162,6 +162,14 @@ def _parse_event_row(
     event_type, event_number = _classify_event(title)
     main_event = _extract_main_event(title)
 
+    # Extract the individual event Wikipedia URL from the event cell's <a> link
+    event_col = col_map.get("event")
+    event_source_url = source_url
+    if event_col is not None and event_col < len(cells):
+        link = cells[event_col].find("a", href=True)
+        if link and link["href"].startswith("/wiki/"):
+            event_source_url = f"{WIKI_BASE}{link['href']}"
+
     return ScrapedEvent(
         title=title,
         event_date=parsed_date,
@@ -170,7 +178,7 @@ def _parse_event_row(
         main_event=main_event,
         event_number=event_number,
         event_type=event_type,
-        source_url=source_url,
+        source_url=event_source_url,
         raw_row=raw,
     )
 
