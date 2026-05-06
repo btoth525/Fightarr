@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="frontend/src/assets/logo.svg" width="80" alt="Fightarr logo" />
+<img src="frontend/public/logo.svg" width="80" alt="Fightarr logo" />
 
 # Fightarr
 
@@ -62,18 +62,26 @@ Fightarr is a purpose-built sibling to Radarr that solves this correctly. It spe
 | Feature | Status |
 |---|---|
 | Scrapes UFC schedule from Wikipedia (PPVs, Fight Nights, On ABC) | ✅ Working |
-| Newznab indexer search (NZBGeek, DrunkenSlug, NZBPlanet, etc.) | ✅ Working |
+| Cover art — Wikipedia REST API, zero config, no API key needed | ✅ Working |
+| Newznab / Torznab indexer support | ✅ Working |
 | Calendar view — next 30 days, grouped by date | ✅ Working |
 | Wanted list — monitored events with no file | ✅ Working |
 | Indexer CRUD via Settings UI | ✅ Working |
+| Download clients — SABnzbd, NZBGet, qBittorrent, Deluge, Transmission, Real-Debrid | ✅ Working |
+| Download client CRUD + connection test via Settings UI | ✅ Working |
+| Post-processing renamer — Radarr-style Plex folder/file naming | ✅ Working |
+| Hardlink-first library import (copy fallback) | ✅ Working |
+| Plex + Jellyfin library refresh notify | ✅ Working |
+| SABnzbd / NZBGet webhook receiver | ✅ Working |
+| Activity queue + history page | ✅ Working |
+| Live DB schema migrations on startup (no Alembic required) | ✅ Working |
 | Query builder — smart search variants per event type | 🔧 In progress |
 | Release scorer — resolution, codec, size, prelims filter | 🔧 In progress |
-| SABnzbd integration — push NZB, sync queue | 🔧 In progress |
-| Post-processing renamer — Plex-friendly folder/file naming | 📋 Planned |
+| Quality profiles UI | 📋 Planned |
+| Event detail page with interactive search | 📋 Planned |
+| Discord / Apprise notifications | 📋 Planned |
 | Single-container Docker image for Unraid | 📋 Planned |
 | Unraid Community Applications template | 📋 Planned |
-| Quality profiles UI | 📋 Planned |
-| Discord / Apprise notifications | 📋 Planned |
 
 Full roadmap: [docs/ROADMAP.md](docs/ROADMAP.md)
 
