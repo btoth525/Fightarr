@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     default_indexer_url: str = ""
     default_indexer_apikey: str = ""
 
+    # TMDB metadata
+    tmdb_api_key: str = ""
+
     # SABnzbd
     sabnzbd_url: str = ""
     sabnzbd_apikey: str = ""

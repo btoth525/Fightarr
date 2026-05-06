@@ -27,6 +27,8 @@ export interface Event {
   status: EventStatus;
   monitored: boolean;
   quality: string | null;
+  poster_url: string | null;
+  tmdb_id: number | null;
 }
 
 export interface QueueItem {

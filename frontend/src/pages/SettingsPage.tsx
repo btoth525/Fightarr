@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Plus, Trash2, Wifi } from "lucide-react";
+import { Plus, Trash2, Wifi, Film } from "lucide-react";
 
 import { api } from "../api/client";
 import type { DownloadClient, DownloadClientType, Indexer, IndexerType } from "../api/types";
@@ -39,11 +39,12 @@ export default function SettingsPage() {
       <div>
         <h1 className="text-xl font-semibold text-text-bright">Settings</h1>
         <p className="text-sm text-text-muted">
-          Configure indexers and download clients
+          Configure indexers, download clients, and metadata sources
         </p>
       </div>
       <IndexersSection />
       <DownloadClientsSection />
+      <MetadataSection />
     </div>
   );
 }
@@ -446,5 +447,93 @@ function DownloadClientForm({
         </button>
       </div>
     </div>
+  );
+}
+
+// ─── Metadata ─────────────────────────────────────────────────────────────────
+
+function MetadataSection() {
+  const [testStatus, setTestStatus] = useState<"idle" | "testing" | "ok" | "fail">("idle");
+
+  async function handleTest() {
+    setTestStatus("testing");
+    try {
+      const r = await api.post<{ success: boolean }>("/settings/metadata/test");
+      setTestStatus(r.success ? "ok" : "fail");
+    } catch {
+      setTestStatus("fail");
+    }
+    setTimeout(() => setTestStatus("idle"), 3000);
+  }
+
+  return (
+    <section className="card p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="font-semibold text-text-bright">Metadata</h2>
+          <p className="text-xs text-text-muted mt-0.5">
+            TMDB — poster art and event metadata
+          </p>
+        </div>
+        <Film size={16} className="text-text-dim" />
+      </div>
+
+      <div className="border-t border-border pt-3 space-y-3">
+        <div className="flex items-start gap-3">
+          <div className="flex-1 space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-text-bright">TMDB</span>
+              <span className="px-1.5 py-0.5 text-[10px] rounded bg-yellow-900/40 text-yellow-300 uppercase tracking-wide font-medium">
+                The Movie Database
+              </span>
+            </div>
+            <p className="text-xs text-text-muted">
+              Provides cover art for event cards. Get a free API key at{" "}
+              <a
+                href="https://www.themoviedb.org/settings/api"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-accent hover:underline"
+              >
+                themoviedb.org
+              </a>
+              . Set via{" "}
+              <code className="text-text font-mono text-[11px] bg-bg-input px-1 rounded">
+                FIGHTARR_TMDB_API_KEY
+              </code>{" "}
+              env var.
+            </p>
+          </div>
+
+          <button
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded border text-sm ${
+              testStatus === "ok"
+                ? "border-status-downloaded text-status-downloaded"
+                : testStatus === "fail"
+                ? "border-status-missing text-status-missing"
+                : "border-border text-text-muted hover:text-text"
+            }`}
+            onClick={handleTest}
+            disabled={testStatus === "testing"}
+          >
+            <Wifi size={13} className={testStatus === "testing" ? "animate-pulse" : ""} />
+            {testStatus === "testing"
+              ? "Testing…"
+              : testStatus === "ok"
+              ? "Connected"
+              : testStatus === "fail"
+              ? "Failed"
+              : "Test"}
+          </button>
+        </div>
+
+        <p className="text-xs text-text-dim bg-bg-input rounded p-2">
+          Posters are fetched automatically after a schedule refresh. Use the{" "}
+          <span className="text-text font-medium">Fetch Art</span> button on the Events page to
+          backfill missing artwork, or hover a card and click the{" "}
+          <span className="text-text font-medium">↻</span> icon to refresh a single event.
+        </p>
+      </div>
+    </section>
   );
 }

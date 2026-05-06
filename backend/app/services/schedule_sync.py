@@ -97,7 +97,39 @@ async def _merge_events(scraped: list[ScrapedEvent]) -> int:
         await session.commit()
 
     logger.info("Merged %d events into the database", count)
+
+    # Fire-and-forget TMDB poster fetch for any events still missing art
+    await _backfill_posters()
+
     return count
+
+
+async def _backfill_posters() -> None:
+    """Fetch TMDB posters for events that don't have one."""
+    from app.core.config import settings
+    from app.services.tmdb import fetch_event_poster
+
+    if not settings.tmdb_api_key:
+        return
+
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(Event).where(Event.poster_url.is_(None)))
+        events = list(result.scalars().all())
+
+        for event in events:
+            year = event.event_date.year if event.event_date else None
+            try:
+                poster_url, tmdb_id = await fetch_event_poster(
+                    event.title, year, settings.tmdb_api_key
+                )
+                if poster_url:
+                    event.poster_url = poster_url
+                    event.tmdb_id = tmdb_id
+            except Exception as exc:
+                logger.debug("TMDB fetch failed for %s: %s", event.slug, exc)
+
+        await session.commit()
+    logger.info("TMDB poster backfill complete")
 
 
 def _derive_status(event_date: date, today: date, has_existing: bool) -> EventStatus:

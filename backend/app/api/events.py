@@ -33,6 +33,8 @@ class EventOut(BaseModel):
     status: EventStatus
     monitored: bool
     quality: str | None
+    poster_url: str | None = None
+    tmdb_id: int | None = None
 
     model_config = {"from_attributes": True}
 
@@ -113,6 +115,57 @@ async def wanted_missing(session: AsyncSession = Depends(get_session)) -> list[E
     )
     result = await session.execute(stmt)
     return list(result.scalars().all())
+
+
+@router.post("/event/{event_id}/refresh-metadata", response_model=EventOut)
+async def refresh_event_metadata(
+    event_id: int, session: AsyncSession = Depends(get_session)
+) -> Event:
+    """Fetch/refresh TMDB poster for a single event."""
+    from app.core.config import settings
+    from app.services.tmdb import fetch_event_poster
+
+    event = await session.get(Event, event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    year = event.event_date.year if event.event_date else None
+    poster_url, tmdb_id = await fetch_event_poster(event.title, year, settings.tmdb_api_key)
+
+    if poster_url:
+        event.poster_url = poster_url
+    if tmdb_id:
+        event.tmdb_id = tmdb_id
+
+    await session.commit()
+    await session.refresh(event)
+    return event
+
+
+@router.post("/command/refresh-metadata")
+async def trigger_metadata_refresh(session: AsyncSession = Depends(get_session)) -> dict:
+    """Fetch TMDB posters for all events that don't have one yet."""
+    from app.core.config import settings
+    from app.services.tmdb import fetch_event_poster
+
+    if not settings.tmdb_api_key:
+        return {"status": "skipped", "reason": "no TMDB API key configured"}
+
+    stmt = select(Event).where(Event.poster_url.is_(None))
+    result = await session.execute(stmt)
+    events = list(result.scalars().all())
+
+    updated = 0
+    for event in events:
+        year = event.event_date.year if event.event_date else None
+        poster_url, tmdb_id = await fetch_event_poster(event.title, year, settings.tmdb_api_key)
+        if poster_url:
+            event.poster_url = poster_url
+            event.tmdb_id = tmdb_id
+            updated += 1
+
+    await session.commit()
+    return {"status": "ok", "updated": updated, "skipped": len(events) - updated}
 
 
 @router.post("/command/refresh-schedule")

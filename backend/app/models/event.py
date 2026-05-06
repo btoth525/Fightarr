@@ -85,5 +85,9 @@ class Event(Base):
     # Source tracking — where did we learn about this event?
     source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # TMDB metadata
+    tmdb_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    poster_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     def __repr__(self) -> str:
         return f"<Event {self.slug} ({self.event_date})>"

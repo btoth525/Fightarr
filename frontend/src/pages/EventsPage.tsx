@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Search } from "lucide-react";
+import { Search, Image } from "lucide-react";
 
 import { api } from "../api/client";
 import type { Event } from "../api/types";
@@ -22,6 +22,11 @@ export default function EventsPage() {
   const toggleMonitored = useMutation({
     mutationFn: (event: Event) =>
       api.put<Event>(`/event/${event.id}`, { monitored: !event.monitored }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["events"] }),
+  });
+
+  const refreshMetadata = useMutation({
+    mutationFn: () => api.post("/command/refresh-metadata"),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["events"] }),
   });
 
@@ -72,6 +77,16 @@ export default function EventsPage() {
               </button>
             ))}
           </div>
+
+          <button
+            className="btn-secondary flex items-center gap-1.5 text-sm"
+            onClick={() => refreshMetadata.mutate()}
+            disabled={refreshMetadata.isPending}
+            title="Fetch TMDB posters for events missing artwork"
+          >
+            <Image size={14} />
+            {refreshMetadata.isPending ? "Fetching…" : "Fetch Art"}
+          </button>
         </div>
       </div>
 
@@ -98,6 +113,7 @@ export default function EventsPage() {
             key={event.id}
             event={event}
             onToggleMonitored={(e) => toggleMonitored.mutate(e)}
+            onMetadataRefresh={() => queryClient.invalidateQueries({ queryKey: ["events"] })}
           />
         ))}
       </div>
