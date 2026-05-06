@@ -17,6 +17,7 @@ export default function EventsPage() {
   const { data: events = [], isLoading, error } = useQuery({
     queryKey: ["events"],
     queryFn: () => api.get<Event[]>("/event"),
+    refetchInterval: 30_000,
   });
 
   const toggleMonitored = useMutation({

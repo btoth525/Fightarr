@@ -35,7 +35,7 @@ AsyncSessionLocal = async_sessionmaker(
 
 async def init_db() -> None:
     """Create tables and migrate any missing columns (safe to run on every start)."""
-    from app.models import download_client, event, indexer, queue_item  # noqa: F401
+    from app.models import app_settings, download_client, event, indexer, queue_item  # noqa: F401
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

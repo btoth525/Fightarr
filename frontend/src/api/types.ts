@@ -59,6 +59,24 @@ export interface Indexer {
   categories: string;
 }
 
+export interface AppSettings {
+  media_root: string;
+  use_hardlinks: boolean;
+  tmdb_api_key: string;
+  plex_host: string;
+  plex_token: string;
+  plex_section_id: string;
+  jellyfin_host: string;
+  jellyfin_token: string;
+  jellyfin_library_id: string;
+}
+
+export interface ScheduledTask {
+  id: string;
+  name: string;
+  next_run_time: string | null;
+}
+
 export type DownloadClientType =
   | "sabnzbd"
   | "nzbget"

@@ -20,11 +20,11 @@ from fastapi import APIRouter, Depends, Form
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.core.database import get_session
 from app.models.event import Event
 from app.models.queue_item import QueueItem
 from app.services.postprocessor import run_postprocess
+from app.services.settings_service import load_settings
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -66,19 +66,20 @@ async def sabnzbd_webhook(
     if not download_path:
         return {"status": "error", "message": "no download path provided"}
 
+    s = await load_settings()
     return await run_postprocess(
         event=event,
         download_path=download_path,
         queue_item=queue_item,
         session=session,
-        media_root=settings.media_root,
-        use_hardlinks=settings.use_hardlinks,
-        plex_host=settings.plex_host,
-        plex_token=settings.plex_token,
-        plex_section_id=settings.plex_section_id,
-        jellyfin_host=settings.jellyfin_host,
-        jellyfin_token=settings.jellyfin_token,
-        jellyfin_library_id=settings.jellyfin_library_id,
+        media_root=s.media_root,
+        use_hardlinks=s.use_hardlinks,
+        plex_host=s.plex_host,
+        plex_token=s.plex_token,
+        plex_section_id=s.plex_section_id,
+        jellyfin_host=s.jellyfin_host,
+        jellyfin_token=s.jellyfin_token,
+        jellyfin_library_id=s.jellyfin_library_id,
     )
 
 
@@ -114,19 +115,20 @@ async def nzbget_webhook(
     if event is None:
         return {"status": "error", "message": "event not found"}
 
+    s = await load_settings()
     return await run_postprocess(
         event=event,
         download_path=destdir,
         queue_item=queue_item,
         session=session,
-        media_root=settings.media_root,
-        use_hardlinks=settings.use_hardlinks,
-        plex_host=settings.plex_host,
-        plex_token=settings.plex_token,
-        plex_section_id=settings.plex_section_id,
-        jellyfin_host=settings.jellyfin_host,
-        jellyfin_token=settings.jellyfin_token,
-        jellyfin_library_id=settings.jellyfin_library_id,
+        media_root=s.media_root,
+        use_hardlinks=s.use_hardlinks,
+        plex_host=s.plex_host,
+        plex_token=s.plex_token,
+        plex_section_id=s.plex_section_id,
+        jellyfin_host=s.jellyfin_host,
+        jellyfin_token=s.jellyfin_token,
+        jellyfin_library_id=s.jellyfin_library_id,
     )
 
 
@@ -143,17 +145,18 @@ async def manual_import(
 
         raise HTTPException(status_code=404, detail="Event not found")
 
+    s = await load_settings()
     return await run_postprocess(
         event=event,
         download_path=file_path,
         queue_item=None,
         session=session,
-        media_root=settings.media_root,
-        use_hardlinks=settings.use_hardlinks,
-        plex_host=settings.plex_host,
-        plex_token=settings.plex_token,
-        plex_section_id=settings.plex_section_id,
-        jellyfin_host=settings.jellyfin_host,
-        jellyfin_token=settings.jellyfin_token,
-        jellyfin_library_id=settings.jellyfin_library_id,
+        media_root=s.media_root,
+        use_hardlinks=s.use_hardlinks,
+        plex_host=s.plex_host,
+        plex_token=s.plex_token,
+        plex_section_id=s.plex_section_id,
+        jellyfin_host=s.jellyfin_host,
+        jellyfin_token=s.jellyfin_token,
+        jellyfin_library_id=s.jellyfin_library_id,
     )

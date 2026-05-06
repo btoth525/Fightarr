@@ -1,9 +1,23 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { Plus, Trash2, Wifi, Film, HardDrive, Link2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Plus, Trash2, Wifi, Film, HardDrive, Link2, Save, Check, X } from "lucide-react";
 
 import { api } from "../api/client";
 import type { DownloadClient, DownloadClientType, Indexer, IndexerType } from "../api/types";
+
+// ─── App settings shape (from GET /settings) ─────────────────────────────────
+
+interface AppSettings {
+  media_root: string;
+  use_hardlinks: boolean;
+  tmdb_api_key: string;
+  plex_host: string;
+  plex_token: string;
+  plex_section_id: string;
+  jellyfin_host: string;
+  jellyfin_token: string;
+  jellyfin_library_id: string;
+}
 
 // ─── Labels ──────────────────────────────────────────────────────────────────
 
@@ -31,9 +45,28 @@ const PROTOCOL_BADGE: Record<string, string> = {
   debrid: "bg-purple-900/40 text-purple-300",
 };
 
+type SaveStatus = "idle" | "saving" | "saved" | "error";
+type TestStatus = "idle" | "testing" | "ok" | "fail";
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
+  const { data: settings, isLoading } = useQuery({
+    queryKey: ["settings"],
+    queryFn: () => api.get<AppSettings>("/settings"),
+  });
+
+  if (isLoading || !settings) {
+    return (
+      <div className="space-y-6 max-w-3xl">
+        <div>
+          <h1 className="text-xl font-semibold text-text-bright">Settings</h1>
+        </div>
+        <p className="text-text-muted text-sm">Loading…</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 max-w-3xl">
       <div>
@@ -42,19 +75,145 @@ export default function SettingsPage() {
           Configure indexers, download clients, media management, and connections
         </p>
       </div>
-      <MediaManagementSection />
+      <MediaSection settings={settings} />
       <IndexersSection />
       <DownloadClientsSection />
-      <ConnectSection />
-      <MetadataSection />
+      <PlexSection settings={settings} />
+      <JellyfinSection settings={settings} />
+      <MetadataSection settings={settings} />
     </div>
+  );
+}
+
+// ─── Save button helper ───────────────────────────────────────────────────────
+
+function SaveBtn({ status, onClick }: { status: SaveStatus; onClick: () => void }) {
+  return (
+    <button
+      className={`flex items-center gap-1.5 px-3 py-1.5 rounded border text-sm transition-colors ${
+        status === "saved"
+          ? "border-status-downloaded text-status-downloaded"
+          : status === "error"
+          ? "border-status-missing text-status-missing"
+          : "btn"
+      }`}
+      onClick={onClick}
+      disabled={status === "saving"}
+    >
+      {status === "saving" ? (
+        <Save size={13} className="animate-pulse" />
+      ) : status === "saved" ? (
+        <Check size={13} />
+      ) : status === "error" ? (
+        <X size={13} />
+      ) : (
+        <Save size={13} />
+      )}
+      {status === "saving" ? "Saving…" : status === "saved" ? "Saved" : status === "error" ? "Failed" : "Save"}
+    </button>
+  );
+}
+
+function useSaveStatus(): [SaveStatus, (p: Promise<unknown>) => void] {
+  const [status, setStatus] = useState<SaveStatus>("idle");
+  const run = (p: Promise<unknown>) => {
+    setStatus("saving");
+    p.then(() => {
+      setStatus("saved");
+      setTimeout(() => setStatus("idle"), 2000);
+    }).catch(() => {
+      setStatus("error");
+      setTimeout(() => setStatus("idle"), 3000);
+    });
+  };
+  return [status, run];
+}
+
+// ─── Media Management ─────────────────────────────────────────────────────────
+
+function MediaSection({ settings }: { settings: AppSettings }) {
+  const qc = useQueryClient();
+  const [mediaRoot, setMediaRoot] = useState(settings.media_root);
+  const [hardlinks, setHardlinks] = useState(settings.use_hardlinks);
+  const [saveStatus, runSave] = useSaveStatus();
+
+  useEffect(() => {
+    setMediaRoot(settings.media_root);
+    setHardlinks(settings.use_hardlinks);
+  }, [settings.media_root, settings.use_hardlinks]);
+
+  function save() {
+    runSave(
+      api
+        .put("/settings/media", { media_root: mediaRoot, use_hardlinks: hardlinks })
+        .then(() => qc.invalidateQueries({ queryKey: ["settings"] })),
+    );
+  }
+
+  return (
+    <section className="card p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="font-semibold text-text-bright">Media Management</h2>
+          <p className="text-xs text-text-muted mt-0.5">Library root folder and import settings</p>
+        </div>
+        <HardDrive size={16} className="text-text-dim" />
+      </div>
+
+      <div className="border-t border-border pt-4 space-y-3">
+        <div>
+          <label className="block text-sm text-text-bright mb-1">Root Folder</label>
+          <input
+            className="input w-full"
+            value={mediaRoot}
+            onChange={(e) => setMediaRoot(e.target.value)}
+            placeholder="/media"
+          />
+          <p className="text-xs text-text-dim mt-1">Where imported UFC events are stored</p>
+        </div>
+
+        <div className="flex items-center justify-between py-1">
+          <div>
+            <div className="text-sm text-text-bright">Use Hardlinks</div>
+            <div className="text-xs text-text-muted mt-0.5">
+              Hardlink instead of copying — preserves download seeding
+            </div>
+          </div>
+          <button
+            onClick={() => setHardlinks((v) => !v)}
+            className={`relative w-10 h-5 rounded-full transition-colors ${
+              hardlinks ? "bg-accent" : "bg-bg-input border border-border"
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
+                hardlinks ? "translate-x-5" : "translate-x-0.5"
+              }`}
+            />
+          </button>
+        </div>
+
+        <div className="pt-1">
+          <p className="text-xs text-text-dim">
+            Naming:{" "}
+            <code className="bg-bg-input px-1 rounded font-mono">
+              UFC 300 - Pereira vs Hill (2024-04-13) [WEBDL-1080p].mkv
+            </code>
+          </p>
+        </div>
+
+        <div className="flex justify-end">
+          <SaveBtn status={saveStatus} onClick={save} />
+        </div>
+      </div>
+    </section>
   );
 }
 
 // ─── Indexers ─────────────────────────────────────────────────────────────────
 
 function IndexersSection() {
-  const queryClient = useQueryClient();
+  const qc = useQueryClient();
   const [showAdd, setShowAdd] = useState(false);
 
   const { data: indexers = [] } = useQuery({
@@ -65,14 +224,14 @@ function IndexersSection() {
   const createIndexer = useMutation({
     mutationFn: (data: Omit<Indexer, "id">) => api.post<Indexer>("/indexer", data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["indexers"] });
+      qc.invalidateQueries({ queryKey: ["indexers"] });
       setShowAdd(false);
     },
   });
 
   const deleteIndexer = useMutation({
     mutationFn: (id: number) => api.delete(`/indexer/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["indexers"] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["indexers"] }),
   });
 
   return (
@@ -92,8 +251,8 @@ function IndexersSection() {
 
       {indexers.length === 0 && !showAdd && (
         <p className="text-sm text-text-muted py-4">
-          No indexers configured. Add a Newznab indexer (NZBGeek, DrunkenSlug,
-          NZBPlanet) or a Torznab source via Prowlarr / Jackett.
+          No indexers configured. Add a Newznab indexer (NZBGeek, DrunkenSlug, NZBPlanet)
+          or a Torznab source via Prowlarr / Jackett.
         </p>
       )}
 
@@ -115,9 +274,7 @@ function IndexersSection() {
               </div>
               <div className="text-xs text-text-muted truncate">{idx.url}</div>
             </div>
-            <span className="text-xs text-text-muted shrink-0">
-              pri {idx.priority}
-            </span>
+            <span className="text-xs text-text-muted shrink-0">pri {idx.priority}</span>
             <button className="btn" onClick={() => deleteIndexer.mutate(idx.id)}>
               <Trash2 size={12} />
             </button>
@@ -186,22 +343,10 @@ function IndexerForm({
         onChange={(e) => setApiKey(e.target.value)}
       />
       <div className="flex gap-2 justify-end pt-1">
-        <button className="btn" onClick={onCancel}>
-          Cancel
-        </button>
+        <button className="btn" onClick={onCancel}>Cancel</button>
         <button
           className="btn btn-primary"
-          onClick={() =>
-            onSubmit({
-              name,
-              indexer_type: type,
-              url,
-              api_key: apiKey,
-              enabled: true,
-              priority: 25,
-              categories,
-            })
-          }
+          onClick={() => onSubmit({ name, indexer_type: type, url, api_key: apiKey, enabled: true, priority: 25, categories })}
         >
           Save
         </button>
@@ -213,7 +358,7 @@ function IndexerForm({
 // ─── Download Clients ─────────────────────────────────────────────────────────
 
 function DownloadClientsSection() {
-  const queryClient = useQueryClient();
+  const qc = useQueryClient();
   const [showAdd, setShowAdd] = useState(false);
   const [testing, setTesting] = useState<number | null>(null);
   const [testResult, setTestResult] = useState<Record<number, boolean>>({});
@@ -227,14 +372,14 @@ function DownloadClientsSection() {
     mutationFn: (data: Omit<DownloadClient, "id">) =>
       api.post<DownloadClient>("/downloadclient", data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["downloadclients"] });
+      qc.invalidateQueries({ queryKey: ["downloadclients"] });
       setShowAdd(false);
     },
   });
 
   const deleteClient = useMutation({
     mutationFn: (id: number) => api.delete(`/downloadclient/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["downloadclients"] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["downloadclients"] }),
   });
 
   const testClient = async (id: number) => {
@@ -264,9 +409,7 @@ function DownloadClientsSection() {
 
       {clients.length === 0 && !showAdd && (
         <p className="text-sm text-text-muted py-4">
-          No download clients configured. Add SABnzbd or NZBGet for NZB downloads,
-          a torrent client for magnet/torrent grabs, or Real-Debrid for premium
-          link resolution.
+          No download clients configured.
         </p>
       )}
 
@@ -279,31 +422,18 @@ function DownloadClientsSection() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm text-text-bright">{dc.name}</span>
-                  <span
-                    className={`text-[10px] px-1.5 py-0.5 rounded font-medium uppercase tracking-wide ${PROTOCOL_BADGE[protocol]}`}
-                  >
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium uppercase tracking-wide ${PROTOCOL_BADGE[protocol]}`}>
                     {CLIENT_LABELS[dc.client_type]}
                   </span>
                   {tested !== undefined && (
-                    <span
-                      className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                        tested
-                          ? "bg-green-900/40 text-green-300"
-                          : "bg-red-900/40 text-red-400"
-                      }`}
-                    >
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${tested ? "bg-green-900/40 text-green-300" : "bg-red-900/40 text-red-400"}`}>
                       {tested ? "Connected" : "Failed"}
                     </span>
                   )}
                 </div>
                 <div className="text-xs text-text-muted truncate">{dc.host}</div>
               </div>
-              <button
-                className="btn"
-                disabled={testing === dc.id}
-                onClick={() => testClient(dc.id)}
-                title="Test connection"
-              >
+              <button className="btn" disabled={testing === dc.id} onClick={() => testClient(dc.id)} title="Test connection">
                 <Wifi size={12} className={testing === dc.id ? "animate-pulse" : ""} />
               </button>
               <button className="btn" onClick={() => deleteClient.mutate(dc.id)}>
@@ -347,17 +477,8 @@ function DownloadClientForm({
   return (
     <div className="border-t border-border pt-3 space-y-2">
       <div className="grid grid-cols-2 gap-2">
-        <input
-          className="input col-span-2"
-          placeholder="Name (e.g. SABnzbd Local)"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-        <select
-          className="input col-span-2"
-          value={clientType}
-          onChange={(e) => setClientType(e.target.value as DownloadClientType)}
-        >
+        <input className="input col-span-2" placeholder="Name (e.g. SABnzbd Local)" value={name} onChange={(e) => setName(e.target.value)} />
+        <select className="input col-span-2" value={clientType} onChange={(e) => setClientType(e.target.value as DownloadClientType)}>
           <optgroup label="NZB clients">
             <option value="sabnzbd">SABnzbd</option>
             <option value="nzbget">NZBGet</option>
@@ -374,104 +495,198 @@ function DownloadClientForm({
       </div>
 
       {!isDebrid && (
-        <input
-          className="input w-full"
-          placeholder={
-            isNzb
-              ? "Host (e.g. http://localhost:8080)"
-              : isTorrent
-              ? "Host (e.g. http://localhost:8080)"
-              : "Host"
-          }
-          value={host}
-          onChange={(e) => setHost(e.target.value)}
-        />
+        <input className="input w-full" placeholder="Host (e.g. http://localhost:8080)" value={host} onChange={(e) => setHost(e.target.value)} />
       )}
-
       {(isNzb || isDebrid) && (
-        <input
-          className="input w-full"
-          type="password"
-          placeholder={isDebrid ? "Real-Debrid API key" : "API key"}
-          value={apiKey}
-          onChange={(e) => setApiKey(e.target.value)}
-        />
+        <input className="input w-full" type="password" placeholder={isDebrid ? "Real-Debrid API key" : "API key"} value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
       )}
-
       {(isTorrent || clientType === "nzbget") && (
         <div className="grid grid-cols-2 gap-2">
           {clientType !== "deluge" && (
-            <input
-              className="input"
-              placeholder="Username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-            />
+            <input className="input" placeholder="Username" value={username} onChange={(e) => setUsername(e.target.value)} />
           )}
-          <input
-            className={`input ${clientType === "deluge" ? "col-span-2" : ""}`}
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
+          <input className={`input ${clientType === "deluge" ? "col-span-2" : ""}`} type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} />
         </div>
       )}
-
       {!isDebrid && (
-        <input
-          className="input w-full"
-          placeholder="Category / label (default: ufc)"
-          value={category}
-          onChange={(e) => setCategory(e.target.value)}
-        />
+        <input className="input w-full" placeholder="Category / label (default: ufc)" value={category} onChange={(e) => setCategory(e.target.value)} />
       )}
 
       <div className="flex gap-2 justify-end pt-1">
-        <button className="btn" onClick={onCancel}>
-          Cancel
-        </button>
-        <button
-          className="btn btn-primary"
-          onClick={() =>
-            onSubmit({
-              name,
-              client_type: clientType,
-              host,
-              api_key: apiKey || null,
-              username: username || null,
-              password: password || null,
-              category: category || "ufc",
-              enabled: true,
-              priority: 25,
-            })
-          }
-        >
-          Save
-        </button>
+        <button className="btn" onClick={onCancel}>Cancel</button>
+        <button className="btn btn-primary" onClick={() => onSubmit({ name, client_type: clientType, host, api_key: apiKey || null, username: username || null, password: password || null, category: category || "ufc", enabled: true, priority: 25 })}>Save</button>
       </div>
     </div>
   );
 }
 
-// ─── Metadata ─────────────────────────────────────────────────────────────────
+// ─── Plex ─────────────────────────────────────────────────────────────────────
 
-function MetadataSection() {
-  const [tmdbStatus, setTmdbStatus] = useState<"idle" | "testing" | "ok" | "fail">("idle");
+function PlexSection({ settings }: { settings: AppSettings }) {
+  const qc = useQueryClient();
+  const [host, setHost] = useState(settings.plex_host);
+  const [token, setToken] = useState(settings.plex_token);
+  const [sectionId, setSectionId] = useState(settings.plex_section_id);
+  const [saveStatus, runSave] = useSaveStatus();
+  const [testStatus, setTestStatus] = useState<TestStatus>("idle");
 
-  async function handleTmdbTest() {
-    setTmdbStatus("testing");
+  useEffect(() => {
+    setHost(settings.plex_host);
+    setToken(settings.plex_token);
+    setSectionId(settings.plex_section_id);
+  }, [settings.plex_host, settings.plex_token, settings.plex_section_id]);
+
+  function save() {
+    runSave(
+      api
+        .put("/settings/connect/plex", { plex_host: host, plex_token: token, plex_section_id: sectionId })
+        .then(() => qc.invalidateQueries({ queryKey: ["settings"] })),
+    );
+  }
+
+  async function test() {
+    setTestStatus("testing");
     try {
-      const r = await api.post<{ success: boolean }>("/settings/metadata/test");
-      setTmdbStatus(r.success ? "ok" : "fail");
+      const r = await api.post<{ success: boolean }>("/settings/connect/plex/test");
+      setTestStatus(r.success ? "ok" : "fail");
     } catch {
-      setTmdbStatus("fail");
+      setTestStatus("fail");
     }
-    setTimeout(() => setTmdbStatus("idle"), 3000);
+    setTimeout(() => setTestStatus("idle"), 3000);
   }
 
   return (
-    <section className="card p-4 space-y-3">
+    <section className="card p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="font-semibold text-text-bright">Plex Media Server</h2>
+          <p className="text-xs text-text-muted mt-0.5">Library refresh after import</p>
+        </div>
+        <Link2 size={16} className="text-text-dim" />
+      </div>
+
+      <div className="border-t border-border pt-4 space-y-3">
+        <div>
+          <label className="block text-sm text-text-bright mb-1">Host</label>
+          <input className="input w-full" placeholder="http://192.168.1.10:32400" value={host} onChange={(e) => setHost(e.target.value)} />
+        </div>
+        <div>
+          <label className="block text-sm text-text-bright mb-1">Token</label>
+          <input className="input w-full" type="password" placeholder={settings.plex_token === "***" ? "Token configured — enter new value to change" : "X-Plex-Token"} value={token} onChange={(e) => setToken(e.target.value)} />
+        </div>
+        <div>
+          <label className="block text-sm text-text-bright mb-1">Library Section ID</label>
+          <input className="input w-full" placeholder="Leave blank to refresh all libraries" value={sectionId} onChange={(e) => setSectionId(e.target.value)} />
+        </div>
+        <div className="flex gap-2 justify-end pt-1">
+          <TestBtn status={testStatus} onClick={test} />
+          <SaveBtn status={saveStatus} onClick={save} />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ─── Jellyfin ─────────────────────────────────────────────────────────────────
+
+function JellyfinSection({ settings }: { settings: AppSettings }) {
+  const qc = useQueryClient();
+  const [host, setHost] = useState(settings.jellyfin_host);
+  const [token, setToken] = useState(settings.jellyfin_token);
+  const [libraryId, setLibraryId] = useState(settings.jellyfin_library_id);
+  const [saveStatus, runSave] = useSaveStatus();
+  const [testStatus, setTestStatus] = useState<TestStatus>("idle");
+
+  useEffect(() => {
+    setHost(settings.jellyfin_host);
+    setToken(settings.jellyfin_token);
+    setLibraryId(settings.jellyfin_library_id);
+  }, [settings.jellyfin_host, settings.jellyfin_token, settings.jellyfin_library_id]);
+
+  function save() {
+    runSave(
+      api
+        .put("/settings/connect/jellyfin", { jellyfin_host: host, jellyfin_token: token, jellyfin_library_id: libraryId })
+        .then(() => qc.invalidateQueries({ queryKey: ["settings"] })),
+    );
+  }
+
+  async function test() {
+    setTestStatus("testing");
+    try {
+      const r = await api.post<{ success: boolean }>("/settings/connect/jellyfin/test");
+      setTestStatus(r.success ? "ok" : "fail");
+    } catch {
+      setTestStatus("fail");
+    }
+    setTimeout(() => setTestStatus("idle"), 3000);
+  }
+
+  return (
+    <section className="card p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="font-semibold text-text-bright">Jellyfin</h2>
+          <p className="text-xs text-text-muted mt-0.5">Library refresh after import</p>
+        </div>
+        <Link2 size={16} className="text-text-dim" />
+      </div>
+
+      <div className="border-t border-border pt-4 space-y-3">
+        <div>
+          <label className="block text-sm text-text-bright mb-1">Host</label>
+          <input className="input w-full" placeholder="http://192.168.1.10:8096" value={host} onChange={(e) => setHost(e.target.value)} />
+        </div>
+        <div>
+          <label className="block text-sm text-text-bright mb-1">API Key</label>
+          <input className="input w-full" type="password" placeholder={settings.jellyfin_token === "***" ? "Token configured — enter new value to change" : "Jellyfin API key"} value={token} onChange={(e) => setToken(e.target.value)} />
+        </div>
+        <div>
+          <label className="block text-sm text-text-bright mb-1">Library ID</label>
+          <input className="input w-full" placeholder="Leave blank to refresh all libraries" value={libraryId} onChange={(e) => setLibraryId(e.target.value)} />
+        </div>
+        <div className="flex gap-2 justify-end pt-1">
+          <TestBtn status={testStatus} onClick={test} />
+          <SaveBtn status={saveStatus} onClick={save} />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ─── Metadata (TMDB) ──────────────────────────────────────────────────────────
+
+function MetadataSection({ settings }: { settings: AppSettings }) {
+  const qc = useQueryClient();
+  const [apiKey, setApiKey] = useState(settings.tmdb_api_key);
+  const [saveStatus, runSave] = useSaveStatus();
+  const [testStatus, setTestStatus] = useState<TestStatus>("idle");
+
+  useEffect(() => {
+    setApiKey(settings.tmdb_api_key);
+  }, [settings.tmdb_api_key]);
+
+  function save() {
+    runSave(
+      api
+        .put("/settings/tmdb", { tmdb_api_key: apiKey })
+        .then(() => qc.invalidateQueries({ queryKey: ["settings"] })),
+    );
+  }
+
+  async function test() {
+    setTestStatus("testing");
+    try {
+      const r = await api.post<{ success: boolean }>("/settings/metadata/test");
+      setTestStatus(r.success ? "ok" : "fail");
+    } catch {
+      setTestStatus("fail");
+    }
+    setTimeout(() => setTestStatus("idle"), 3000);
+  }
+
+  return (
+    <section className="card p-4 space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="font-semibold text-text-bright">Metadata</h2>
@@ -480,7 +695,7 @@ function MetadataSection() {
         <Film size={16} className="text-text-dim" />
       </div>
 
-      <div className="border-t border-border pt-3 space-y-3">
+      <div className="border-t border-border pt-4 space-y-4">
         {/* Wikipedia — always active */}
         <div className="flex items-start gap-3">
           <div className="flex-1 space-y-1">
@@ -491,284 +706,60 @@ function MetadataSection() {
               </span>
             </div>
             <p className="text-xs text-text-muted">
-              Poster art from each event's Wikipedia article. Works out of the box —
-              no configuration required.
+              Poster art from each event's Wikipedia article. Works out of the box.
             </p>
           </div>
         </div>
 
         {/* TMDB — optional */}
-        <div className="flex items-start gap-3">
-          <div className="flex-1 space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-text-bright">TMDB</span>
-              <span className="px-1.5 py-0.5 text-[10px] rounded bg-yellow-900/40 text-yellow-300 uppercase tracking-wide font-medium">
-                Optional
-              </span>
-            </div>
-            <p className="text-xs text-text-muted">
-              Official promotional posters from The Movie Database. Higher quality
-              for numbered PPVs. Set{" "}
-              <code className="text-text font-mono text-[11px] bg-bg-input px-1 rounded">
-                FIGHTARR_TMDB_API_KEY
-              </code>{" "}
-              to enable — free key at{" "}
-              <a
-                href="https://www.themoviedb.org/settings/api"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-accent hover:underline"
-              >
-                themoviedb.org
-              </a>
-              .
-            </p>
-          </div>
-
-          <button
-            className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded border text-sm ${
-              tmdbStatus === "ok"
-                ? "border-status-downloaded text-status-downloaded"
-                : tmdbStatus === "fail"
-                ? "border-status-missing text-status-missing"
-                : "border-border text-text-muted hover:text-text"
-            }`}
-            onClick={handleTmdbTest}
-            disabled={tmdbStatus === "testing"}
-          >
-            <Wifi size={13} className={tmdbStatus === "testing" ? "animate-pulse" : ""} />
-            {tmdbStatus === "testing"
-              ? "Testing…"
-              : tmdbStatus === "ok"
-              ? "Connected"
-              : tmdbStatus === "fail"
-              ? "No key"
-              : "Test"}
-          </button>
-        </div>
-
-        <p className="text-xs text-text-dim bg-bg-input rounded p-2">
-          Posters are fetched automatically after a schedule refresh. Use the{" "}
-          <span className="text-text font-medium">Fetch Art</span> button on the Events page to
-          backfill missing artwork, or hover a card and click the{" "}
-          <span className="text-text font-medium">↻</span> icon to refresh a single event.
-        </p>
-      </div>
-    </section>
-  );
-}
-
-// ─── Media Management ─────────────────────────────────────────────────────────
-
-function MediaManagementSection() {
-  const { data } = useQuery({
-    queryKey: ["settings-media"],
-    queryFn: () => api.get<{ media_root: string; use_hardlinks: boolean }>("/settings/media"),
-  });
-
-  return (
-    <section className="card p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="font-semibold text-text-bright">Media Management</h2>
-          <p className="text-xs text-text-muted mt-0.5">Library root folder and import settings</p>
-        </div>
-        <HardDrive size={16} className="text-text-dim" />
-      </div>
-
-      <div className="border-t border-border pt-3 space-y-3">
-        <div className="flex items-center justify-between py-2">
-          <div>
-            <div className="text-sm text-text-bright">Root Folder</div>
-            <div className="text-xs text-text-muted mt-0.5">
-              Where imported UFC events are stored
-            </div>
-          </div>
-          <code className="text-xs bg-bg-input px-2 py-1 rounded text-text font-mono">
-            {data?.media_root ?? "./media"}
-          </code>
-        </div>
-
-        <div className="flex items-center justify-between py-2 border-t border-border">
-          <div>
-            <div className="text-sm text-text-bright">Use Hardlinks</div>
-            <div className="text-xs text-text-muted mt-0.5">
-              Hardlink instead of copying — preserves download seeding
-            </div>
-          </div>
-          <span
-            className={`px-2 py-0.5 text-xs rounded font-medium ${
-              data?.use_hardlinks
-                ? "bg-green-900/40 text-green-300"
-                : "bg-bg-input text-text-dim"
-            }`}
-          >
-            {data?.use_hardlinks ? "Enabled" : "Disabled"}
-          </span>
-        </div>
-
-        <div className="border-t border-border pt-3">
-          <p className="text-xs text-text-dim">
-            Naming format:{" "}
-            <code className="bg-bg-input px-1 rounded font-mono">
-              UFC 300 - Pereira vs Hill (2024-04-13) [WEBDL-1080p].mkv
-            </code>
-          </p>
-          <p className="text-xs text-text-dim mt-1">
-            Set root folder via{" "}
-            <code className="bg-bg-input px-1 rounded font-mono">FIGHTARR_MEDIA_ROOT</code> · hardlinks via{" "}
-            <code className="bg-bg-input px-1 rounded font-mono">FIGHTARR_USE_HARDLINKS</code>
-          </p>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ─── Connect ──────────────────────────────────────────────────────────────────
-
-type TestStatus = "idle" | "testing" | "ok" | "fail";
-
-function ConnectSection() {
-  const [plexStatus, setPlexStatus] = useState<TestStatus>("idle");
-  const [jellyfinStatus, setJellyfinStatus] = useState<TestStatus>("idle");
-
-  const { data: plexData } = useQuery({
-    queryKey: ["settings-plex"],
-    queryFn: () => api.get<{ host: string; token_set: boolean; section_id: string }>("/settings/connect/plex"),
-  });
-  const { data: jellyfinData } = useQuery({
-    queryKey: ["settings-jellyfin"],
-    queryFn: () => api.get<{ host: string; token_set: boolean; library_id: string }>("/settings/connect/jellyfin"),
-  });
-
-  async function testPlex() {
-    setPlexStatus("testing");
-    try {
-      const r = await api.post<{ success: boolean }>("/settings/connect/plex/test");
-      setPlexStatus(r.success ? "ok" : "fail");
-    } catch {
-      setPlexStatus("fail");
-    }
-    setTimeout(() => setPlexStatus("idle"), 3000);
-  }
-
-  async function testJellyfin() {
-    setJellyfinStatus("testing");
-    try {
-      const r = await api.post<{ success: boolean }>("/settings/connect/jellyfin/test");
-      setJellyfinStatus(r.success ? "ok" : "fail");
-    } catch {
-      setJellyfinStatus("fail");
-    }
-    setTimeout(() => setJellyfinStatus("idle"), 3000);
-  }
-
-  return (
-    <section className="card p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="font-semibold text-text-bright">Connect</h2>
-          <p className="text-xs text-text-muted mt-0.5">Media server notifications after import</p>
-        </div>
-        <Link2 size={16} className="text-text-dim" />
-      </div>
-
-      <div className="border-t border-border pt-3 space-y-3">
-        {/* Plex */}
-        <ConnectRow
-          name="Plex Media Server"
-          badge="plex"
-          badgeClass="bg-orange-900/40 text-orange-300"
-          host={plexData?.host ?? ""}
-          configured={!!plexData?.host && !!plexData?.token_set}
-          envHost="FIGHTARR_PLEX_HOST"
-          envToken="FIGHTARR_PLEX_TOKEN"
-          envExtra="FIGHTARR_PLEX_SECTION_ID"
-          status={plexStatus}
-          onTest={testPlex}
-        />
-
-        {/* Jellyfin */}
-        <ConnectRow
-          name="Jellyfin"
-          badge="jellyfin"
-          badgeClass="bg-violet-900/40 text-violet-300"
-          host={jellyfinData?.host ?? ""}
-          configured={!!jellyfinData?.host && !!jellyfinData?.token_set}
-          envHost="FIGHTARR_JELLYFIN_HOST"
-          envToken="FIGHTARR_JELLYFIN_TOKEN"
-          envExtra="FIGHTARR_JELLYFIN_LIBRARY_ID"
-          status={jellyfinStatus}
-          onTest={testJellyfin}
-        />
-
-        <p className="text-xs text-text-dim bg-bg-input rounded p-2">
-          After a successful import, Fightarr POSTs a library refresh to configured media servers
-          so the event appears immediately without waiting for a scheduled scan.
-        </p>
-      </div>
-    </section>
-  );
-}
-
-function ConnectRow({
-  name, badge, badgeClass, host, configured,
-  envHost, envToken, envExtra, status, onTest,
-}: {
-  name: string;
-  badge: string;
-  badgeClass: string;
-  host: string;
-  configured: boolean;
-  envHost: string;
-  envToken: string;
-  envExtra: string;
-  status: TestStatus;
-  onTest: () => void;
-}) {
-  return (
-    <div className="flex items-start gap-3">
-      <div className="flex-1 space-y-1">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-text-bright">{name}</span>
-          <span className={`px-1.5 py-0.5 text-[10px] rounded uppercase tracking-wide font-medium ${badgeClass}`}>
-            {badge}
-          </span>
-          {configured && (
-            <span className="px-1.5 py-0.5 text-[10px] rounded bg-green-900/40 text-green-300 uppercase tracking-wide font-medium">
-              Configured
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-text-bright">TMDB</span>
+            <span className="px-1.5 py-0.5 text-[10px] rounded bg-yellow-900/40 text-yellow-300 uppercase tracking-wide font-medium">
+              Optional
             </span>
-          )}
-        </div>
-        {host ? (
-          <p className="text-xs text-text-muted font-mono">{host}</p>
-        ) : (
+          </div>
           <p className="text-xs text-text-muted">
-            Set via{" "}
-            <code className="bg-bg-input px-1 rounded font-mono text-[11px]">{envHost}</code>
-            {" · "}
-            <code className="bg-bg-input px-1 rounded font-mono text-[11px]">{envToken}</code>
-            {" · "}
-            <code className="bg-bg-input px-1 rounded font-mono text-[11px]">{envExtra}</code>
+            Higher quality promotional posters. Free key at{" "}
+            <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">
+              themoviedb.org
+            </a>
+            .
           </p>
-        )}
+          <input
+            className="input w-full"
+            type="password"
+            placeholder={settings.tmdb_api_key === "***" ? "API key configured — enter new value to change" : "TMDB API key (optional)"}
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+          />
+          <div className="flex gap-2 justify-end">
+            <TestBtn status={testStatus} onClick={test} />
+            <SaveBtn status={saveStatus} onClick={save} />
+          </div>
+        </div>
       </div>
+    </section>
+  );
+}
 
-      <button
-        className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded border text-sm ${
-          status === "ok"
-            ? "border-status-downloaded text-status-downloaded"
-            : status === "fail"
-            ? "border-status-missing text-status-missing"
-            : "border-border text-text-muted hover:text-text"
-        }`}
-        onClick={onTest}
-        disabled={status === "testing"}
-      >
-        <Wifi size={13} className={status === "testing" ? "animate-pulse" : ""} />
-        {status === "testing" ? "Testing…" : status === "ok" ? "Connected" : status === "fail" ? "Failed" : "Test"}
-      </button>
-    </div>
+// ─── Shared test button ───────────────────────────────────────────────────────
+
+function TestBtn({ status, onClick }: { status: TestStatus; onClick: () => void }) {
+  return (
+    <button
+      className={`flex items-center gap-1.5 px-3 py-1.5 rounded border text-sm ${
+        status === "ok"
+          ? "border-status-downloaded text-status-downloaded"
+          : status === "fail"
+          ? "border-status-missing text-status-missing"
+          : "border-border text-text-muted hover:text-text"
+      }`}
+      onClick={onClick}
+      disabled={status === "testing"}
+    >
+      <Wifi size={13} className={status === "testing" ? "animate-pulse" : ""} />
+      {status === "testing" ? "Testing…" : status === "ok" ? "Connected" : status === "fail" ? "Failed" : "Test"}
+    </button>
   );
 }

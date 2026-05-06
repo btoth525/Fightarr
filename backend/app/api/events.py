@@ -121,17 +121,19 @@ async def wanted_missing(session: AsyncSession = Depends(get_session)) -> list[E
 async def refresh_event_metadata(
     event_id: int, session: AsyncSession = Depends(get_session)
 ) -> Event:
-    """Fetch/refresh TMDB poster for a single event."""
-    from app.core.config import settings
+    """Fetch/refresh poster for a single event (Wikipedia first, TMDB optional)."""
     from app.services.tmdb import fetch_event_poster
+
+    from app.services.settings_service import load_settings
 
     event = await session.get(Event, event_id)
     if event is None:
         raise HTTPException(status_code=404, detail="Event not found")
 
+    db_settings = await load_settings()
     year = event.event_date.year if event.event_date else None
     poster_url, tmdb_id = await fetch_event_poster(
-        event.title, year, settings.tmdb_api_key, source_url=event.source_url
+        event.title, year, db_settings.tmdb_api_key, source_url=event.source_url
     )
 
     if poster_url:
@@ -147,9 +149,10 @@ async def refresh_event_metadata(
 @router.post("/command/refresh-metadata")
 async def trigger_metadata_refresh(session: AsyncSession = Depends(get_session)) -> dict:
     """Fetch posters (Wikipedia first, TMDB optional) for events missing artwork."""
-    from app.core.config import settings
+    from app.services.settings_service import load_settings
     from app.services.tmdb import fetch_event_poster
 
+    db_settings = await load_settings()
     stmt = select(Event).where(Event.poster_url.is_(None))
     result = await session.execute(stmt)
     events = list(result.scalars().all())
@@ -159,7 +162,7 @@ async def trigger_metadata_refresh(session: AsyncSession = Depends(get_session))
         year = event.event_date.year if event.event_date else None
         try:
             poster_url, tmdb_id = await fetch_event_poster(
-                event.title, year, settings.tmdb_api_key, source_url=event.source_url
+                event.title, year, db_settings.tmdb_api_key, source_url=event.source_url
             )
             if poster_url:
                 event.poster_url = poster_url

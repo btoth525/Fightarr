@@ -106,8 +106,10 @@ async def _merge_events(scraped: list[ScrapedEvent]) -> int:
 
 async def _backfill_posters() -> None:
     """Fetch posters (Wikipedia first, TMDB optional) for events missing art."""
-    from app.core.config import settings
+    from app.services.settings_service import load_settings
     from app.services.tmdb import fetch_event_poster
+
+    db_settings = await load_settings()
 
     async with AsyncSessionLocal() as session:
         result = await session.execute(select(Event).where(Event.poster_url.is_(None)))
@@ -117,7 +119,7 @@ async def _backfill_posters() -> None:
             year = event.event_date.year if event.event_date else None
             try:
                 poster_url, tmdb_id = await fetch_event_poster(
-                    event.title, year, settings.tmdb_api_key, source_url=event.source_url
+                    event.title, year, db_settings.tmdb_api_key, source_url=event.source_url
                 )
                 if poster_url:
                     event.poster_url = poster_url
