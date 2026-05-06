@@ -24,8 +24,8 @@ export default function EventCard({ event, onToggleMonitored, onMetadataRefresh 
     e.stopPropagation();
     setRefreshing(true);
     try {
-      const updated = await api.post<Event>(`/event/${event.id}/refresh-metadata`);
-      onMetadataRefresh?.(updated);
+      await api.post<Event>(`/event/${event.id}/refresh-metadata`);
+      onMetadataRefresh?.(event);
     } finally {
       setRefreshing(false);
     }

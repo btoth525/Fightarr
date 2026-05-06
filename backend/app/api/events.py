@@ -146,12 +146,9 @@ async def refresh_event_metadata(
 
 @router.post("/command/refresh-metadata")
 async def trigger_metadata_refresh(session: AsyncSession = Depends(get_session)) -> dict:
-    """Fetch TMDB posters for all events that don't have one yet."""
+    """Fetch posters (Wikipedia first, TMDB optional) for events missing artwork."""
     from app.core.config import settings
     from app.services.tmdb import fetch_event_poster
-
-    if not settings.tmdb_api_key:
-        return {"status": "skipped", "reason": "no TMDB API key configured"}
 
     stmt = select(Event).where(Event.poster_url.is_(None))
     result = await session.execute(stmt)
@@ -160,13 +157,16 @@ async def trigger_metadata_refresh(session: AsyncSession = Depends(get_session))
     updated = 0
     for event in events:
         year = event.event_date.year if event.event_date else None
-        poster_url, tmdb_id = await fetch_event_poster(
-            event.title, year, settings.tmdb_api_key, source_url=event.source_url
-        )
-        if poster_url:
-            event.poster_url = poster_url
-            event.tmdb_id = tmdb_id
-            updated += 1
+        try:
+            poster_url, tmdb_id = await fetch_event_poster(
+                event.title, year, settings.tmdb_api_key, source_url=event.source_url
+            )
+            if poster_url:
+                event.poster_url = poster_url
+                event.tmdb_id = tmdb_id
+                updated += 1
+        except Exception:
+            pass
 
     await session.commit()
     return {"status": "ok", "updated": updated, "skipped": len(events) - updated}
@@ -179,3 +179,13 @@ async def trigger_schedule_refresh() -> dict:
 
     count = await sync_schedule()
     return {"status": "ok", "events_synced": count}
+
+
+@router.post("/event/{event_id}/search")
+async def search_event(event_id: int, session: AsyncSession = Depends(get_session)) -> dict:
+    """Trigger a manual indexer search for a single event."""
+    event = await session.get(Event, event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="Event not found")
+    from app.services.indexer_search import search_event as _search
+    return await _search(event_id)

@@ -52,6 +52,7 @@ EXPOSE 7878
 
 ENV FIGHTARR_DB_PATH=/config/fightarr.db \
     FIGHTARR_MEDIA_ROOT=/media \
-    FIGHTARR_LOG_LEVEL=INFO
+    FIGHTARR_LOG_LEVEL=INFO \
+    FIGHTARR_CORS_ORIGINS=*
 
 CMD ["/usr/bin/supervisord", "-n", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

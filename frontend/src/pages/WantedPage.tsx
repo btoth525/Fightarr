@@ -1,15 +1,36 @@
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { format, parseISO } from "date-fns";
+import { Search } from "lucide-react";
 
 import { api } from "../api/client";
 import type { Event } from "../api/types";
 import StatusBadge from "../components/StatusBadge";
 
 export default function WantedPage() {
+  const [searching, setSearching] = useState<number | null>(null);
+  const [searchResult, setSearchResult] = useState<Record<number, string>>({});
+
   const { data: events = [], isLoading } = useQuery({
     queryKey: ["wanted"],
     queryFn: () => api.get<Event[]>("/wanted/missing"),
   });
+
+  async function handleSearch(eventId: number) {
+    setSearching(eventId);
+    try {
+      const result = await api.post<{ releases: unknown[] }>(`/event/${eventId}/search`);
+      const count = result.releases?.length ?? 0;
+      setSearchResult((prev) => ({
+        ...prev,
+        [eventId]: count > 0 ? `${count} release${count !== 1 ? "s" : ""} found` : "No releases found",
+      }));
+    } catch {
+      setSearchResult((prev) => ({ ...prev, [eventId]: "Search failed" }));
+    } finally {
+      setSearching(null);
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -42,9 +63,19 @@ export default function WantedPage() {
                 {format(parseISO(e.event_date), "MMM d, yyyy")}
                 {e.location && ` · ${e.location}`}
               </div>
+              {searchResult[e.id] && (
+                <div className="text-xs text-accent mt-0.5">{searchResult[e.id]}</div>
+              )}
             </div>
             <StatusBadge status={e.status} />
-            <button className="btn btn-primary text-xs">Search</button>
+            <button
+              className="btn btn-primary text-xs flex items-center gap-1"
+              disabled={searching === e.id}
+              onClick={() => handleSearch(e.id)}
+            >
+              <Search size={11} className={searching === e.id ? "animate-pulse" : ""} />
+              {searching === e.id ? "Searching…" : "Search"}
+            </button>
           </div>
         ))}
       </div>

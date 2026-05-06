@@ -5,6 +5,8 @@ the background scheduler that periodically refreshes UFC event data from
 upstream sources (Wikipedia, UFCStats).
 """
 
+import asyncio
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -15,12 +17,25 @@ from app.core.config import settings
 from app.core.database import init_db
 from app.core.scheduler import start_scheduler, stop_scheduler
 
+logger = logging.getLogger(__name__)
+
+
+async def _startup_sync() -> None:
+    """Run an initial schedule sync in the background so the DB isn't empty on first boot."""
+    from app.services.schedule_sync import sync_schedule
+    try:
+        count = await sync_schedule()
+        logger.info("Startup sync complete: %d events", count)
+    except Exception as exc:
+        logger.warning("Startup sync failed (non-fatal): %s", exc)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Run on startup and shutdown."""
     await init_db()
     start_scheduler()
+    asyncio.create_task(_startup_sync())
     yield
     stop_scheduler()
 
@@ -32,11 +47,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS — wide open in dev; tighten for prod
+# CORS — wildcard in Docker (set FIGHTARR_CORS_ORIGINS to restrict)
+_cors_origins = settings.cors_origins
+_allow_all = _cors_origins == ["*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
-    allow_credentials=True,
+    allow_origins=["*"] if _allow_all else _cors_origins,
+    allow_origin_regex=None,
+    allow_credentials=False if _allow_all else True,
     allow_methods=["*"],
     allow_headers=["*"],
 )

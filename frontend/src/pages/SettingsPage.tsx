@@ -146,6 +146,7 @@ function IndexerForm({
   const [type, setType] = useState<IndexerType>("newznab");
   const [url, setUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
+  const [categories, setCategories] = useState("5070,5080");
 
   return (
     <div className="border-t border-border pt-3 space-y-2">
@@ -167,7 +168,8 @@ function IndexerForm({
         <input
           className="input"
           placeholder="Categories (e.g. 5070,5080)"
-          defaultValue="5070,5080"
+          value={categories}
+          onChange={(e) => setCategories(e.target.value)}
         />
       </div>
       <input
@@ -197,7 +199,7 @@ function IndexerForm({
               api_key: apiKey,
               enabled: true,
               priority: 25,
-              categories: "5070,5080",
+              categories,
             })
           }
         >
