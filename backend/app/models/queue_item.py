@@ -29,8 +29,16 @@ class QueueItem(Base):
     indexer_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     nzb_url: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    download_client_id: Mapped[int | None] = mapped_column(
+        ForeignKey("download_clients.id", ondelete="SET NULL"), nullable=True
+    )
+    # which download client holds this job
+
     sabnzbd_nzo_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    # SABnzbd's identifier for the download
+    # generic external job ID (SABnzbd nzo_id, NZBGet NZBID, qBit hash, etc.)
+
+    download_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # set by the webhook / post-process to the completed download dir
 
     status: Mapped[QueueStatus] = mapped_column(String(32), default=QueueStatus.GRABBED, index=True)
 

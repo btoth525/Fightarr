@@ -47,4 +47,90 @@ async def test_tmdb_connection() -> dict:
     return {"success": ok, "message": "Connected to TMDB" if ok else "Connection failed"}
 
 
-# TODO: PUT endpoint that persists to a settings table
+# ── Media management ──────────────────────────────────────────────────────────
+
+
+class MediaSettings(BaseModel):
+    media_root: str
+    use_hardlinks: bool
+
+
+@router.get("/settings/media", response_model=MediaSettings)
+async def get_media_settings() -> MediaSettings:
+    return MediaSettings(
+        media_root=settings.media_root,
+        use_hardlinks=settings.use_hardlinks,
+    )
+
+
+# ── Connect (Plex / Jellyfin) ─────────────────────────────────────────────────
+
+
+class PlexSettings(BaseModel):
+    host: str
+    token_set: bool
+    section_id: str
+
+
+class JellyfinSettings(BaseModel):
+    host: str
+    token_set: bool
+    library_id: str
+
+
+@router.get("/settings/connect/plex", response_model=PlexSettings)
+async def get_plex_settings() -> PlexSettings:
+    return PlexSettings(
+        host=settings.plex_host,
+        token_set=bool(settings.plex_token),
+        section_id=settings.plex_section_id,
+    )
+
+
+@router.post("/settings/connect/plex/test")
+async def test_plex_connection() -> dict:
+
+    if not settings.plex_host or not settings.plex_token:
+        return {"success": False, "message": "Host or token not configured"}
+
+    # Use /identity to test without triggering a full scan
+    import httpx
+
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            r = await client.get(
+                f"{settings.plex_host.rstrip('/')}/identity",
+                params={"X-Plex-Token": settings.plex_token},
+            )
+            r.raise_for_status()
+        return {"success": True, "message": "Connected to Plex"}
+    except Exception as exc:
+        return {"success": False, "message": str(exc)}
+
+
+@router.get("/settings/connect/jellyfin", response_model=JellyfinSettings)
+async def get_jellyfin_settings() -> JellyfinSettings:
+    return JellyfinSettings(
+        host=settings.jellyfin_host,
+        token_set=bool(settings.jellyfin_token),
+        library_id=settings.jellyfin_library_id,
+    )
+
+
+@router.post("/settings/connect/jellyfin/test")
+async def test_jellyfin_connection() -> dict:
+    import httpx
+
+    if not settings.jellyfin_host or not settings.jellyfin_token:
+        return {"success": False, "message": "Host or token not configured"}
+
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            r = await client.get(
+                f"{settings.jellyfin_host.rstrip('/')}/System/Info",
+                headers={"X-Emby-Token": settings.jellyfin_token},
+            )
+            r.raise_for_status()
+        return {"success": True, "message": "Connected to Jellyfin"}
+    except Exception as exc:
+        return {"success": False, "message": str(exc)}

@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     # Storage
     db_path: Path = Path("./fightarr.db")
 
+    # Media library
+    media_root: str = "./media"
+    use_hardlinks: bool = True
+
     # Logging
     log_level: str = "INFO"
 
@@ -39,6 +43,16 @@ class Settings(BaseSettings):
 
     # TMDB metadata
     tmdb_api_key: str = ""
+
+    # Plex
+    plex_host: str = ""
+    plex_token: str = ""
+    plex_section_id: str = ""
+
+    # Jellyfin
+    jellyfin_host: str = ""
+    jellyfin_token: str = ""
+    jellyfin_library_id: str = ""
 
     # SABnzbd
     sabnzbd_url: str = ""

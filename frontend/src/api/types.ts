@@ -35,8 +35,15 @@ export interface QueueItem {
   id: number;
   event_id: number;
   release_title: string;
+  release_size_bytes: number | null;
+  indexer_name: string | null;
+  download_client_id: number | null;
   status: "grabbed" | "downloading" | "completed" | "failed" | "imported";
   progress_percent: number;
+  error_message: string | null;
+  download_path: string | null;
+  grabbed_at: string;
+  completed_at: string | null;
 }
 
 export type IndexerType = "newznab" | "torznab";

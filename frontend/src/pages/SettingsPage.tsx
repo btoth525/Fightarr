@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Plus, Trash2, Wifi, Film } from "lucide-react";
+import { Plus, Trash2, Wifi, Film, HardDrive, Link2 } from "lucide-react";
 
 import { api } from "../api/client";
 import type { DownloadClient, DownloadClientType, Indexer, IndexerType } from "../api/types";
@@ -39,11 +39,13 @@ export default function SettingsPage() {
       <div>
         <h1 className="text-xl font-semibold text-text-bright">Settings</h1>
         <p className="text-sm text-text-muted">
-          Configure indexers, download clients, and metadata sources
+          Configure indexers, download clients, media management, and connections
         </p>
       </div>
+      <MediaManagementSection />
       <IndexersSection />
       <DownloadClientsSection />
+      <ConnectSection />
       <MetadataSection />
     </div>
   );
@@ -551,5 +553,220 @@ function MetadataSection() {
         </p>
       </div>
     </section>
+  );
+}
+
+// ─── Media Management ─────────────────────────────────────────────────────────
+
+function MediaManagementSection() {
+  const { data } = useQuery({
+    queryKey: ["settings-media"],
+    queryFn: () => api.get<{ media_root: string; use_hardlinks: boolean }>("/settings/media"),
+  });
+
+  return (
+    <section className="card p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="font-semibold text-text-bright">Media Management</h2>
+          <p className="text-xs text-text-muted mt-0.5">Library root folder and import settings</p>
+        </div>
+        <HardDrive size={16} className="text-text-dim" />
+      </div>
+
+      <div className="border-t border-border pt-3 space-y-3">
+        <div className="flex items-center justify-between py-2">
+          <div>
+            <div className="text-sm text-text-bright">Root Folder</div>
+            <div className="text-xs text-text-muted mt-0.5">
+              Where imported UFC events are stored
+            </div>
+          </div>
+          <code className="text-xs bg-bg-input px-2 py-1 rounded text-text font-mono">
+            {data?.media_root ?? "./media"}
+          </code>
+        </div>
+
+        <div className="flex items-center justify-between py-2 border-t border-border">
+          <div>
+            <div className="text-sm text-text-bright">Use Hardlinks</div>
+            <div className="text-xs text-text-muted mt-0.5">
+              Hardlink instead of copying — preserves download seeding
+            </div>
+          </div>
+          <span
+            className={`px-2 py-0.5 text-xs rounded font-medium ${
+              data?.use_hardlinks
+                ? "bg-green-900/40 text-green-300"
+                : "bg-bg-input text-text-dim"
+            }`}
+          >
+            {data?.use_hardlinks ? "Enabled" : "Disabled"}
+          </span>
+        </div>
+
+        <div className="border-t border-border pt-3">
+          <p className="text-xs text-text-dim">
+            Naming format:{" "}
+            <code className="bg-bg-input px-1 rounded font-mono">
+              UFC 300 - Pereira vs Hill (2024-04-13) [WEBDL-1080p].mkv
+            </code>
+          </p>
+          <p className="text-xs text-text-dim mt-1">
+            Set root folder via{" "}
+            <code className="bg-bg-input px-1 rounded font-mono">FIGHTARR_MEDIA_ROOT</code> · hardlinks via{" "}
+            <code className="bg-bg-input px-1 rounded font-mono">FIGHTARR_USE_HARDLINKS</code>
+          </p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ─── Connect ──────────────────────────────────────────────────────────────────
+
+type TestStatus = "idle" | "testing" | "ok" | "fail";
+
+function ConnectSection() {
+  const [plexStatus, setPlexStatus] = useState<TestStatus>("idle");
+  const [jellyfinStatus, setJellyfinStatus] = useState<TestStatus>("idle");
+
+  const { data: plexData } = useQuery({
+    queryKey: ["settings-plex"],
+    queryFn: () => api.get<{ host: string; token_set: boolean; section_id: string }>("/settings/connect/plex"),
+  });
+  const { data: jellyfinData } = useQuery({
+    queryKey: ["settings-jellyfin"],
+    queryFn: () => api.get<{ host: string; token_set: boolean; library_id: string }>("/settings/connect/jellyfin"),
+  });
+
+  async function testPlex() {
+    setPlexStatus("testing");
+    try {
+      const r = await api.post<{ success: boolean }>("/settings/connect/plex/test");
+      setPlexStatus(r.success ? "ok" : "fail");
+    } catch {
+      setPlexStatus("fail");
+    }
+    setTimeout(() => setPlexStatus("idle"), 3000);
+  }
+
+  async function testJellyfin() {
+    setJellyfinStatus("testing");
+    try {
+      const r = await api.post<{ success: boolean }>("/settings/connect/jellyfin/test");
+      setJellyfinStatus(r.success ? "ok" : "fail");
+    } catch {
+      setJellyfinStatus("fail");
+    }
+    setTimeout(() => setJellyfinStatus("idle"), 3000);
+  }
+
+  return (
+    <section className="card p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="font-semibold text-text-bright">Connect</h2>
+          <p className="text-xs text-text-muted mt-0.5">Media server notifications after import</p>
+        </div>
+        <Link2 size={16} className="text-text-dim" />
+      </div>
+
+      <div className="border-t border-border pt-3 space-y-3">
+        {/* Plex */}
+        <ConnectRow
+          name="Plex Media Server"
+          badge="plex"
+          badgeClass="bg-orange-900/40 text-orange-300"
+          host={plexData?.host ?? ""}
+          configured={!!plexData?.host && !!plexData?.token_set}
+          envHost="FIGHTARR_PLEX_HOST"
+          envToken="FIGHTARR_PLEX_TOKEN"
+          envExtra="FIGHTARR_PLEX_SECTION_ID"
+          status={plexStatus}
+          onTest={testPlex}
+        />
+
+        {/* Jellyfin */}
+        <ConnectRow
+          name="Jellyfin"
+          badge="jellyfin"
+          badgeClass="bg-violet-900/40 text-violet-300"
+          host={jellyfinData?.host ?? ""}
+          configured={!!jellyfinData?.host && !!jellyfinData?.token_set}
+          envHost="FIGHTARR_JELLYFIN_HOST"
+          envToken="FIGHTARR_JELLYFIN_TOKEN"
+          envExtra="FIGHTARR_JELLYFIN_LIBRARY_ID"
+          status={jellyfinStatus}
+          onTest={testJellyfin}
+        />
+
+        <p className="text-xs text-text-dim bg-bg-input rounded p-2">
+          After a successful import, Fightarr POSTs a library refresh to configured media servers
+          so the event appears immediately without waiting for a scheduled scan.
+        </p>
+      </div>
+    </section>
+  );
+}
+
+function ConnectRow({
+  name, badge, badgeClass, host, configured,
+  envHost, envToken, envExtra, status, onTest,
+}: {
+  name: string;
+  badge: string;
+  badgeClass: string;
+  host: string;
+  configured: boolean;
+  envHost: string;
+  envToken: string;
+  envExtra: string;
+  status: TestStatus;
+  onTest: () => void;
+}) {
+  return (
+    <div className="flex items-start gap-3">
+      <div className="flex-1 space-y-1">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-text-bright">{name}</span>
+          <span className={`px-1.5 py-0.5 text-[10px] rounded uppercase tracking-wide font-medium ${badgeClass}`}>
+            {badge}
+          </span>
+          {configured && (
+            <span className="px-1.5 py-0.5 text-[10px] rounded bg-green-900/40 text-green-300 uppercase tracking-wide font-medium">
+              Configured
+            </span>
+          )}
+        </div>
+        {host ? (
+          <p className="text-xs text-text-muted font-mono">{host}</p>
+        ) : (
+          <p className="text-xs text-text-muted">
+            Set via{" "}
+            <code className="bg-bg-input px-1 rounded font-mono text-[11px]">{envHost}</code>
+            {" · "}
+            <code className="bg-bg-input px-1 rounded font-mono text-[11px]">{envToken}</code>
+            {" · "}
+            <code className="bg-bg-input px-1 rounded font-mono text-[11px]">{envExtra}</code>
+          </p>
+        )}
+      </div>
+
+      <button
+        className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded border text-sm ${
+          status === "ok"
+            ? "border-status-downloaded text-status-downloaded"
+            : status === "fail"
+            ? "border-status-missing text-status-missing"
+            : "border-border text-text-muted hover:text-text"
+        }`}
+        onClick={onTest}
+        disabled={status === "testing"}
+      >
+        <Wifi size={13} className={status === "testing" ? "animate-pulse" : ""} />
+        {status === "testing" ? "Testing…" : status === "ok" ? "Connected" : status === "fail" ? "Failed" : "Test"}
+      </button>
+    </div>
   );
 }
