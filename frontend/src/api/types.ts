@@ -111,6 +111,14 @@ export interface BlocklistEntry {
   blocked_at: string;
 }
 
+export interface PathMapping {
+  id: number;
+  host: string;
+  remote_path: string;
+  local_path: string;
+  created_at: string;
+}
+
 export interface LogEntry {
   ts: string;
   level: "DEBUG" | "INFO" | "WARNING" | "ERROR" | "CRITICAL";

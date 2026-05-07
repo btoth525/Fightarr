@@ -232,23 +232,55 @@ You don't need post-processing scripts. Fightarr handles renaming, poster art, a
 
 ## Unraid
 
-Fightarr is built to live in your Unraid tower alongside Radarr, Sonarr, and SABnzbd. Pull it from GHCR and map two folders:
+Fightarr is built to live in your Unraid tower alongside Radarr, Sonarr, and SABnzbd. The single most important thing to get right is **path mapping**: Fightarr can only import a completed download if it can read the folder SAB writes to.
+
+The cleanest solution (and what Radarr/Sonarr's [TRaSH-Guides](https://trash-guides.info/Hardlinks/How-to-setup-for/Unraid/) recommend) is one unified `/data` mount across every container:
 
 ```yaml
-# In Unraid → Docker → Add Container
-Image: ghcr.io/btoth525/fightarr:latest
-Port: 7878 → 7878
+# Fightarr (this template)
+/mnt/user/appdata/fightarr   →   /config   (SQLite database, never share)
+/mnt/user/data               →   /data     (downloads + media, single mount)
 
-Volumes:
-  /mnt/user/appdata/fightarr  →  /config   (stores the SQLite database)
-  /mnt/user/media/ufc         →  /media    (your UFC library)
+# SABnzbd (must use the SAME host path)
+/mnt/user/data               →   /data
+  → SAB category "ufc" folder = /data/usenet/complete/ufc
 
-Environment (optional):
-  FIGHTARR_TMDB_API_KEY  =  <your key if you want TMDB posters>
-  FIGHTARR_LOG_LEVEL     =  INFO
+# Plex / Jellyfin (must use the SAME host path)
+/mnt/user/data               →   /data
+  → Library = /data/media/ufc
 ```
 
-A Community Applications template will be submitted once the search loop ships end-to-end.
+With this layout:
+- SAB drops a finished download in `/data/usenet/complete/ufc/UFC.300.../` — Fightarr sees that exact path
+- Fightarr hardlinks the file into `/data/media/ufc/UFC 300 - Pereira vs Hill (2024)/` — Plex sees that exact path
+- **Hardlinks work** because both folders live on the same filesystem, so the move costs zero extra disk space and your NZB stays seedable
+
+Then in Fightarr Settings → Media Management, set **Root Folder** to `/data/media/ufc`.
+
+### If your paths are already different
+
+If Radarr or Sonarr already work for you with `/downloads` and `/media` mounts, you can use the same layout — Fightarr's Unraid template has optional legacy fields for it.
+
+If your download client is on a different machine (or in a container that can't share `/data`), add a **Remote Path Mapping** in Fightarr Settings → Download Clients → Remote Path Mappings:
+
+```
+Remote (SAB sees):   /downloads/complete/ufc
+Local (Fightarr):    /data/usenet/complete/ufc
+```
+
+Fightarr will translate the path returned by SAB into one it can actually read before importing. Same feature as Radarr's, same UI position.
+
+### Container settings
+
+Pull from GHCR — multi-arch (`linux/amd64` + `linux/arm64`):
+
+```bash
+docker pull ghcr.io/btoth525/fightarr:latest
+```
+
+Default port is `7878` (matches Radarr) but the Unraid template defaults to `7879` so it doesn't collide if you're running both. Run-as user defaults to `99:100` (`nobody:users`) and `UMASK=002` to match Radarr/Sonarr file permissions.
+
+The Unraid template lives at [`docs/unraid-template.xml`](docs/unraid-template.xml) and a Community Applications submission will follow once the project has a versioned tag without `pre-alpha` on it.
 
 ---
 

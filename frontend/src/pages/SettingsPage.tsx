@@ -20,7 +20,13 @@ import clsx from "clsx";
 import { toast } from "sonner";
 
 import { api } from "../api/client";
-import type { DownloadClient, DownloadClientType, Indexer, IndexerType } from "../api/types";
+import type {
+  DownloadClient,
+  DownloadClientType,
+  Indexer,
+  IndexerType,
+  PathMapping,
+} from "../api/types";
 
 // ─── Tab navigation ───────────────────────────────────────────────────────────
 
@@ -129,7 +135,12 @@ export default function SettingsPage() {
           <div className="space-y-6">
             {activeTab === "media" && <MediaSection settings={settings} />}
             {activeTab === "indexers" && <IndexersSection />}
-            {activeTab === "downloadclients" && <DownloadClientsSection />}
+            {activeTab === "downloadclients" && (
+              <>
+                <DownloadClientsSection />
+                <PathMappingsSection />
+              </>
+            )}
             {activeTab === "connect" && (
               <>
                 <PlexSection settings={settings} />
@@ -730,6 +741,146 @@ function DownloadClientForm({
         <button className="btn btn-primary" onClick={() => onSubmit({ name, client_type: clientType, host, api_key: apiKey || null, username: username || null, password: password || null, category: category || "ufc", enabled: true, priority: 25 })}>Save</button>
       </div>
     </div>
+  );
+}
+
+// ─── Remote Path Mappings ─────────────────────────────────────────────────────
+
+function PathMappingsSection() {
+  const qc = useQueryClient();
+  const [showAdd, setShowAdd] = useState(false);
+  const [host, setHost] = useState("");
+  const [remotePath, setRemotePath] = useState("");
+  const [localPath, setLocalPath] = useState("");
+
+  const { data: mappings = [] } = useQuery({
+    queryKey: ["pathmappings"],
+    queryFn: () => api.get<PathMapping[]>("/pathmapping"),
+  });
+
+  const create = useMutation({
+    mutationFn: (data: { host: string; remote_path: string; local_path: string }) =>
+      api.post<PathMapping>("/pathmapping", data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["pathmappings"] });
+      setShowAdd(false);
+      setHost("");
+      setRemotePath("");
+      setLocalPath("");
+      toast.success("Path mapping added");
+    },
+    onError: (err) =>
+      toast.error("Could not save mapping", {
+        description: err instanceof Error ? err.message : undefined,
+      }),
+  });
+
+  const del = useMutation({
+    mutationFn: (id: number) => api.delete(`/pathmapping/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["pathmappings"] });
+      toast.success("Path mapping removed");
+    },
+  });
+
+  return (
+    <section className="card p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="font-semibold text-text-bright">Remote Path Mappings</h2>
+          <p className="text-xs text-text-muted mt-0.5">
+            Translate paths when Fightarr and your download client see different filesystems
+          </p>
+        </div>
+        <button className="btn" onClick={() => setShowAdd(!showAdd)}>
+          <Plus size={14} />
+          Add
+        </button>
+      </div>
+
+      {mappings.length === 0 && !showAdd && (
+        <div className="text-xs text-text-muted py-2 space-y-1">
+          <p>
+            <span className="text-text-bright">Skip this section</span> if Fightarr and your download
+            client (SABnzbd / NZBGet / qBit) mount the same host folder at the same path inside their
+            containers — the recommended TRaSH-Guides setup.
+          </p>
+          <p>
+            Add a mapping only if SAB reports a path like{" "}
+            <code className="bg-bg-input px-1 rounded">/downloads/complete/ufc</code> but Fightarr sees
+            it as <code className="bg-bg-input px-1 rounded">/data/usenet/complete/ufc</code>.
+          </p>
+        </div>
+      )}
+
+      {mappings.length > 0 && (
+        <div className="divide-y divide-border">
+          {mappings.map((m) => (
+            <div key={m.id} className="py-2.5 flex items-center gap-3">
+              <div className="flex-1 min-w-0 grid grid-cols-2 gap-3 text-xs">
+                <div className="min-w-0">
+                  <div className="text-text-dim uppercase tracking-wide text-[10px] mb-0.5">
+                    Remote (download client sees)
+                  </div>
+                  <code className="text-text-bright font-mono truncate block">{m.remote_path}</code>
+                </div>
+                <div className="min-w-0">
+                  <div className="text-text-dim uppercase tracking-wide text-[10px] mb-0.5">
+                    Local (Fightarr sees)
+                  </div>
+                  <code className="text-accent font-mono truncate block">{m.local_path}</code>
+                </div>
+              </div>
+              {m.host && <span className="text-xs text-text-muted shrink-0">{m.host}</span>}
+              <button className="btn" onClick={() => del.mutate(m.id)}>
+                <Trash2 size={12} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {showAdd && (
+        <div className="border-t border-border pt-3 space-y-2">
+          <input
+            className="input w-full"
+            placeholder="Host (optional, e.g. 192.168.1.10) — for documentation only"
+            value={host}
+            onChange={(e) => setHost(e.target.value)}
+          />
+          <input
+            className="input w-full"
+            placeholder="Remote path: how the download client sees it (e.g. /downloads/complete)"
+            value={remotePath}
+            onChange={(e) => setRemotePath(e.target.value)}
+          />
+          <input
+            className="input w-full"
+            placeholder="Local path: how Fightarr sees it (e.g. /data/usenet/complete)"
+            value={localPath}
+            onChange={(e) => setLocalPath(e.target.value)}
+          />
+          <div className="flex gap-2 justify-end pt-1">
+            <button className="btn" onClick={() => setShowAdd(false)}>
+              Cancel
+            </button>
+            <button
+              className="btn btn-primary"
+              disabled={!remotePath.trim() || !localPath.trim() || create.isPending}
+              onClick={() =>
+                create.mutate({
+                  host: host.trim(),
+                  remote_path: remotePath.trim(),
+                  local_path: localPath.trim(),
+                })
+              }
+            >
+              Save
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 

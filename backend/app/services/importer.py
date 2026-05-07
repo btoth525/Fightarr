@@ -33,6 +33,36 @@ SAMPLE_RE = re.compile(r"\bsample\b", re.IGNORECASE)
 MIN_FILE_BYTES = 100 * 1024 * 1024  # 100 MB — anything smaller is almost certainly a sample
 
 
+async def _apply_path_mappings(remote_path: str | None) -> str | None:
+    """Translate a download client's path into Fightarr's filesystem view.
+
+    For each configured PathMapping, if remote_path starts with mapping.remote_path,
+    rewrite the prefix to mapping.local_path. Mappings are applied in id order;
+    longest-match-wins so more specific rules take precedence.
+    """
+    if not remote_path:
+        return remote_path
+    from sqlalchemy import select
+
+    from app.core.database import AsyncSessionLocal
+    from app.models.path_mapping import PathMapping
+
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(PathMapping))
+        mappings = list(result.scalars().all())
+
+    if not mappings:
+        return remote_path
+
+    # Longest remote_path first — most specific match wins
+    mappings.sort(key=lambda m: len(m.remote_path), reverse=True)
+    for m in mappings:
+        prefix = m.remote_path.rstrip("/")
+        if remote_path == prefix or remote_path.startswith(prefix + "/"):
+            return m.local_path.rstrip("/") + remote_path[len(prefix) :]
+    return remote_path
+
+
 async def import_download(session: AsyncSession, item: QueueItem) -> None:
     """Move a completed download into the media library, Radarr-style."""
     from app.services.settings_service import load_settings
@@ -44,9 +74,32 @@ async def import_download(session: AsyncSession, item: QueueItem) -> None:
     db_settings = await load_settings()
     media_root = Path(db_settings.media_root)
 
-    video_file = _find_video_file(item.download_path)
+    # Apply Remote Path Mappings before touching the filesystem — handles
+    # Fightarr-in-Docker + SAB-on-host (or different container mount points).
+    translated_path = await _apply_path_mappings(item.download_path)
+    if translated_path != item.download_path:
+        logger.info(
+            "Path mapping: %r → %r",
+            item.download_path,
+            translated_path,
+        )
+
+    video_file = _find_video_file(translated_path)
     if video_file is None:
-        raise FileNotFoundError(f"No video file in {item.download_path!r}")
+        # Distinguish "path doesn't exist" from "path is empty / no video"
+        from pathlib import Path as _P
+
+        root = _P(translated_path) if translated_path else None
+        if root is None or not root.exists():
+            raise FileNotFoundError(
+                f"Download path {translated_path!r} is not visible to Fightarr. "
+                f"Check that the host folder is mounted into BOTH the download "
+                f"client and Fightarr at the same path, OR add a Remote Path "
+                f"Mapping in Settings → Download Clients."
+            )
+        raise FileNotFoundError(
+            f"No video file >100 MB found in {translated_path!r} (samples are skipped)."
+        )
 
     quality = _detect_quality(video_file.name) or _detect_quality(item.release_title)
 
