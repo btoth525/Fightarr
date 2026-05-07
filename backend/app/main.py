@@ -47,14 +47,15 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS — wildcard in Docker (set FIGHTARR_CORS_ORIGINS to restrict)
-_cors_origins = settings.cors_origins
-_allow_all = _cors_origins == ["*"]
+# CORS — parse comma-separated string; "*" means allow all
+_raw_origins = settings.cors_origins.strip()
+_allow_all = _raw_origins == "*"
+_cors_origins = ["*"] if _allow_all else [o.strip() for o in _raw_origins.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"] if _allow_all else _cors_origins,
+    allow_origins=_cors_origins,
     allow_origin_regex=None,
-    allow_credentials=False if _allow_all else True,
+    allow_credentials=not _allow_all,
     allow_methods=["*"],
     allow_headers=["*"],
 )

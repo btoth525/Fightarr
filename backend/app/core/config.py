@@ -25,12 +25,8 @@ class Settings(BaseSettings):
     # Logging
     log_level: str = "INFO"
 
-    # CORS — allow Vite dev server by default
-    cors_origins: list[str] = [
-        "http://localhost:5173",
-        "http://localhost:7878",
-        "http://127.0.0.1:5173",
-    ]
+    # CORS — comma-separated origins or "*" for wildcard
+    cors_origins: str = "http://localhost:5173,http://localhost:7878,http://127.0.0.1:5173"
 
     # Scheduler intervals (seconds)
     schedule_refresh_interval: int = 60 * 60 * 6  # 6 hours
