@@ -11,10 +11,28 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688.svg)](https://fastapi.tiangolo.com)
 [![React](https://img.shields.io/badge/React-18-61DAFB.svg)](https://react.dev)
 [![Status](https://img.shields.io/badge/Status-Pre--Alpha-red.svg)](#status)
+[![Vibe Coded](https://img.shields.io/badge/Vibe--Coded-AI--Assisted-purple.svg)](#-vibe-coded--read-this-before-you-deploy)
 
 Radarr [explicitly won't support UFC](https://github.com/Radarr/Radarr/issues/9215). Fightarr does.
 
 </div>
+
+---
+
+## ⚠️ Vibe-coded — read this before you deploy
+
+Fightarr is **vibe-coded**: a human owner directing an AI coding assistant in conversational, iterative passes rather than a traditional spec → design → review → implement workflow. The features are real, the tests pass, the production build is clean — but you should treat the codebase the same way you'd treat any unaudited OSS app you found on GitHub last week.
+
+**Specifically:**
+
+- **No security audit yet.** Don't expose this to the public internet without a reverse proxy + auth in front of it. There is no built-in authentication. Run it on your LAN or behind a VPN/Tailscale/Cloudflare Tunnel.
+- **Stores secrets in SQLite.** API keys (indexer, Plex, Jellyfin, Discord webhooks) and download-client passwords live in `fightarr.db`. They are *not* encrypted at rest — protect that file the same way you'd protect a `.env` with the same secrets.
+- **Talks to your indexers and download clients on your behalf.** Misconfigured priority ordering or quality scoring could grab releases you didn't want. Start with monitor-by-default *off* (it is) and grab a few events manually before turning on bulk auto-search.
+- **Schema migrations are best-effort additive.** New columns are auto-added on startup, but column type changes or destructive renames will require a manual `sqlite3` step. Back up `fightarr.db` before pulling a new version.
+- **The disk side-effects are real.** The importer hardlinks/copies files into your media root, downloads `poster.jpg` into each event folder, and triggers Plex/Jellyfin library scans. Test against a scratch directory first.
+- **Production-ready means "the happy path works end-to-end."** It does not mean every error case has been thought through. File a GitHub issue when you find one.
+
+If you'd rather wait for a human-reviewed v1.0.0 cut, watch the repo and check back when there's a versioned tag without `pre-alpha` on it.
 
 ---
 

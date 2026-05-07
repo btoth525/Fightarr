@@ -2,9 +2,12 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Play, Download, AlertTriangle, CheckCircle2, FileText } from "lucide-react";
 import { toast } from "sonner";
+import clsx from "clsx";
 
 import { api } from "../api/client";
 import type { ScheduledTask, LogEntry } from "../api/types";
+
+type SystemTab = "status" | "tasks" | "health" | "logs";
 
 interface SystemStatus {
   appName: string;
@@ -37,6 +40,7 @@ const PRESETS = [
 export default function SystemPage() {
   const queryClient = useQueryClient();
 
+  const [tab, setTab] = useState<SystemTab>("status");
   const [fromYear, setFromYear] = useState(CURRENT_YEAR);
   const [toYear, setToYear] = useState(CURRENT_YEAR + 1);
   const [syncResult, setSyncResult] = useState<string | null>(null);
@@ -119,28 +123,69 @@ export default function SystemPage() {
     setSyncResult(null);
   }
 
+  const SYS_TABS: { slug: SystemTab; label: string; badge?: number }[] = [
+    { slug: "status", label: "Status" },
+    { slug: "tasks", label: "Tasks", badge: tasks.length },
+    { slug: "health", label: "Health", badge: health?.failures.length },
+    { slug: "logs", label: "Logs" },
+  ];
+
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="space-y-4 max-w-3xl">
       <div>
         <h1 className="text-xl font-semibold text-text-bright">System</h1>
-        <p className="text-sm text-text-muted">Application status and scheduled tasks</p>
+        <p className="text-sm text-text-muted">
+          Application status, background tasks, and diagnostics
+        </p>
       </div>
 
-      {/* Status */}
-      <section>
-        <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-2">
-          Status
-        </h2>
-        {statusLoading ? (
-          <p className="text-text-muted text-sm">Loading…</p>
-        ) : status ? (
-          <div className="card p-4 space-y-2">
-            <Row label="Application" value={status.appName} />
-            <Row label="Version" value={status.version} />
-            <Row label="Branch" value={status.branch} />
-          </div>
-        ) : null}
-      </section>
+      {/* Top tab bar (Radarr-style) */}
+      <div className="flex border-b border-border">
+        {SYS_TABS.map(({ slug, label, badge }) => (
+          <button
+            key={slug}
+            className={clsx(
+              "flex items-center px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
+              tab === slug
+                ? "border-accent text-text-bright"
+                : "border-transparent text-text-muted hover:text-text",
+            )}
+            onClick={() => setTab(slug)}
+          >
+            {label}
+            {badge !== undefined && badge > 0 && (
+              <span
+                className={clsx(
+                  "ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full font-medium",
+                  slug === "health"
+                    ? "bg-status-missing/20 text-status-missing"
+                    : "bg-accent/20 text-accent",
+                )}
+              >
+                {badge}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Status tab */}
+      {tab === "status" && (
+        <div className="space-y-6">
+          <section>
+            <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-2">
+              Status
+            </h2>
+            {statusLoading ? (
+              <p className="text-text-muted text-sm">Loading…</p>
+            ) : status ? (
+              <div className="card p-4 space-y-2">
+                <Row label="Application" value={status.appName} />
+                <Row label="Version" value={status.version} />
+                <Row label="Branch" value={status.branch} />
+              </div>
+            ) : null}
+          </section>
 
       {/* Historical / Future Sync */}
       <section>
@@ -233,12 +278,15 @@ export default function SystemPage() {
           </div>
         </div>
       </section>
+        </div>
+      )}
 
-      {/* Health */}
-      <section>
-        <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-2">
-          Health
-        </h2>
+      {/* Health tab */}
+      {tab === "health" && (
+        <section>
+          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-2">
+            Health
+          </h2>
         {!health || health.checked_at === null ? (
           <p className="text-text-muted text-sm">
             Awaiting first health check (runs every 15 minutes — or click Run Now on
@@ -271,13 +319,15 @@ export default function SystemPage() {
             ))}
           </div>
         )}
-      </section>
+        </section>
+      )}
 
-      {/* Scheduled Tasks */}
-      <section>
-        <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-2">
-          Scheduled Tasks
-        </h2>
+      {/* Tasks tab */}
+      {tab === "tasks" && (
+        <section>
+          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-2">
+            Scheduled Tasks
+          </h2>
         {tasksLoading ? (
           <p className="text-text-muted text-sm">Loading…</p>
         ) : tasks.length === 0 ? (
@@ -294,14 +344,16 @@ export default function SystemPage() {
             ))}
           </div>
         )}
-      </section>
+        </section>
+      )}
 
-      {/* Logs */}
-      <section>
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider">
-            Logs
-          </h2>
+      {/* Logs tab */}
+      {tab === "logs" && (
+        <section>
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider">
+              Logs
+            </h2>
           <div className="flex rounded border border-border overflow-hidden text-xs">
             {[
               { val: "", label: "All" },
@@ -331,13 +383,14 @@ export default function SystemPage() {
             <p className="text-text-muted text-sm">No log entries yet.</p>
           </div>
         ) : (
-          <div className="card max-h-[480px] overflow-y-auto font-mono text-[11px]">
+          <div className="card max-h-[600px] overflow-y-auto font-mono text-[11px]">
             {logs.slice().reverse().map((line, i) => (
               <LogRow key={i} entry={line} />
             ))}
           </div>
         )}
-      </section>
+        </section>
+      )}
     </div>
   );
 }

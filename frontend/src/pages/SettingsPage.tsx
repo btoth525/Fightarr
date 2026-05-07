@@ -1,10 +1,44 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
-import { Plus, Trash2, Wifi, Film, HardDrive, Link2, Save, Check, X } from "lucide-react";
+import { useNavigate, useLocation } from "react-router-dom";
+import {
+  Plus,
+  Trash2,
+  Wifi,
+  Film,
+  HardDrive,
+  Link2,
+  Save,
+  Check,
+  X,
+  Rss,
+  Cloud,
+  ArrowUp,
+  ArrowDown,
+} from "lucide-react";
+import clsx from "clsx";
 import { toast } from "sonner";
 
 import { api } from "../api/client";
 import type { DownloadClient, DownloadClientType, Indexer, IndexerType } from "../api/types";
+
+// ─── Tab navigation ───────────────────────────────────────────────────────────
+
+const TABS = [
+  { slug: "media", label: "Media Management", icon: HardDrive },
+  { slug: "indexers", label: "Indexers", icon: Rss },
+  { slug: "downloadclients", label: "Download Clients", icon: Cloud },
+  { slug: "connect", label: "Connect", icon: Link2 },
+  { slug: "metadata", label: "Metadata", icon: Film },
+] as const;
+
+type TabSlug = (typeof TABS)[number]["slug"];
+
+function activeTabFromPath(pathname: string): TabSlug {
+  const m = pathname.match(/\/settings\/([a-z]+)/);
+  const found = m ? TABS.find((t) => t.slug === m[1]) : null;
+  return found ? found.slug : "media";
+}
 
 // ─── App settings shape (from GET /settings) ─────────────────────────────────
 
@@ -54,37 +88,59 @@ type TestStatus = "idle" | "testing" | "ok" | "fail";
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const activeTab = activeTabFromPath(location.pathname);
+
   const { data: settings, isLoading } = useQuery({
     queryKey: ["settings"],
     queryFn: () => api.get<AppSettings>("/settings"),
   });
 
-  if (isLoading || !settings) {
-    return (
-      <div className="space-y-6 max-w-3xl">
-        <div>
-          <h1 className="text-xl font-semibold text-text-bright">Settings</h1>
-        </div>
-        <p className="text-text-muted text-sm">Loading…</p>
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-6 max-w-3xl">
-      <div>
-        <h1 className="text-xl font-semibold text-text-bright">Settings</h1>
-        <p className="text-sm text-text-muted">
-          Configure indexers, download clients, media management, and connections
-        </p>
+    <div className="flex gap-6 -m-6 h-full">
+      {/* Left tab nav (Radarr-style) */}
+      <aside className="w-56 shrink-0 border-r border-border bg-bg-panel/40 py-6 px-3 overflow-y-auto">
+        <h1 className="text-lg font-semibold text-text-bright px-3 mb-3">Settings</h1>
+        <nav className="space-y-0.5">
+          {TABS.map(({ slug, label, icon: Icon }) => (
+            <button
+              key={slug}
+              onClick={() => navigate(`/settings/${slug}`)}
+              className={clsx(
+                "w-full flex items-center gap-2.5 px-3 py-2 rounded text-sm text-left transition-colors",
+                activeTab === slug
+                  ? "bg-bg-elevated text-text-bright border-l-2 border-accent -ml-0.5"
+                  : "text-text hover:bg-bg-elevated hover:text-text-bright",
+              )}
+            >
+              <Icon size={14} />
+              <span>{label}</span>
+            </button>
+          ))}
+        </nav>
+      </aside>
+
+      {/* Tab body */}
+      <div className="flex-1 py-6 pr-6 max-w-3xl overflow-y-auto">
+        {isLoading || !settings ? (
+          <p className="text-text-muted text-sm">Loading…</p>
+        ) : (
+          <div className="space-y-6">
+            {activeTab === "media" && <MediaSection settings={settings} />}
+            {activeTab === "indexers" && <IndexersSection />}
+            {activeTab === "downloadclients" && <DownloadClientsSection />}
+            {activeTab === "connect" && (
+              <>
+                <PlexSection settings={settings} />
+                <JellyfinSection settings={settings} />
+                <NotificationsSection settings={settings} />
+              </>
+            )}
+            {activeTab === "metadata" && <MetadataSection settings={settings} />}
+          </div>
+        )}
       </div>
-      <MediaSection settings={settings} />
-      <IndexersSection />
-      <DownloadClientsSection />
-      <PlexSection settings={settings} />
-      <JellyfinSection settings={settings} />
-      <NotificationsSection settings={settings} />
-      <MetadataSection settings={settings} />
     </div>
   );
 }
@@ -240,6 +296,34 @@ function IndexersSection() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["indexers"] }),
   });
 
+  const updatePriority = useMutation({
+    mutationFn: ({ ix, newPriority }: { ix: Indexer; newPriority: number }) =>
+      api.put<Indexer>(`/indexer/${ix.id}`, {
+        ...ix,
+        priority: newPriority,
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["indexers"] }),
+  });
+
+  const sorted = [...indexers].sort((a, b) => a.priority - b.priority);
+
+  function moveUp(idx: Indexer) {
+    const i = sorted.findIndex((x) => x.id === idx.id);
+    if (i <= 0) return;
+    const target = sorted[i - 1];
+    // Swap priorities so the rest of the list keeps stable ordering
+    updatePriority.mutate({ ix: idx, newPriority: target.priority });
+    updatePriority.mutate({ ix: target, newPriority: idx.priority });
+  }
+
+  function moveDown(idx: Indexer) {
+    const i = sorted.findIndex((x) => x.id === idx.id);
+    if (i < 0 || i >= sorted.length - 1) return;
+    const target = sorted[i + 1];
+    updatePriority.mutate({ ix: idx, newPriority: target.priority });
+    updatePriority.mutate({ ix: target, newPriority: idx.priority });
+  }
+
   const testIndexer = async (id: number) => {
     setTesting(id);
     const ix = indexers.find((i) => i.id === id);
@@ -283,11 +367,31 @@ function IndexersSection() {
       )}
 
       <div className="divide-y divide-border">
-        {indexers.map((idx) => {
+        {sorted.map((idx, i) => {
           const tested = testResult[idx.id];
+          const isFirst = i === 0;
+          const isLast = i === sorted.length - 1;
           return (
             <div key={idx.id} className="py-2.5 space-y-1">
               <div className="flex items-center gap-3">
+                <div className="flex flex-col shrink-0">
+                  <button
+                    className="text-text-dim hover:text-text disabled:opacity-20 disabled:hover:text-text-dim"
+                    disabled={isFirst || updatePriority.isPending}
+                    onClick={() => moveUp(idx)}
+                    title="Move up (higher priority — searched first)"
+                  >
+                    <ArrowUp size={11} />
+                  </button>
+                  <button
+                    className="text-text-dim hover:text-text disabled:opacity-20 disabled:hover:text-text-dim"
+                    disabled={isLast || updatePriority.isPending}
+                    onClick={() => moveDown(idx)}
+                    title="Move down (lower priority)"
+                  >
+                    <ArrowDown size={11} />
+                  </button>
+                </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm text-text-bright">{idx.name}</span>
@@ -314,7 +418,7 @@ function IndexersSection() {
                   </div>
                   <div className="text-xs text-text-muted truncate">{idx.url}</div>
                 </div>
-                <span className="text-xs text-text-muted shrink-0">pri {idx.priority}</span>
+                <span className="text-xs text-text-muted shrink-0 font-mono">#{idx.priority}</span>
                 <button
                   className="btn"
                   disabled={testing === idx.id}
@@ -328,7 +432,7 @@ function IndexersSection() {
                 </button>
               </div>
               {tested !== undefined && !tested.ok && (
-                <p className="text-xs text-status-missing px-1">{tested.message}</p>
+                <p className="text-xs text-status-missing px-1 ml-7">{tested.message}</p>
               )}
             </div>
           );
@@ -435,6 +539,30 @@ function DownloadClientsSection() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["downloadclients"] }),
   });
 
+  const updatePriority = useMutation({
+    mutationFn: ({ dc, newPriority }: { dc: DownloadClient; newPriority: number }) =>
+      api.put<DownloadClient>(`/downloadclient/${dc.id}`, { ...dc, priority: newPriority }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["downloadclients"] }),
+  });
+
+  const sortedClients = [...clients].sort((a, b) => a.priority - b.priority);
+
+  function moveClientUp(dc: DownloadClient) {
+    const i = sortedClients.findIndex((x) => x.id === dc.id);
+    if (i <= 0) return;
+    const target = sortedClients[i - 1];
+    updatePriority.mutate({ dc, newPriority: target.priority });
+    updatePriority.mutate({ dc: target, newPriority: dc.priority });
+  }
+
+  function moveClientDown(dc: DownloadClient) {
+    const i = sortedClients.findIndex((x) => x.id === dc.id);
+    if (i < 0 || i >= sortedClients.length - 1) return;
+    const target = sortedClients[i + 1];
+    updatePriority.mutate({ dc, newPriority: target.priority });
+    updatePriority.mutate({ dc: target, newPriority: dc.priority });
+  }
+
   const testClient = async (id: number) => {
     setTesting(id);
     const dc = clients.find((c) => c.id === id);
@@ -478,11 +606,31 @@ function DownloadClientsSection() {
       )}
 
       <div className="divide-y divide-border">
-        {clients.map((dc) => {
+        {sortedClients.map((dc, i) => {
           const protocol = CLIENT_PROTOCOL[dc.client_type];
           const tested = testResult[dc.id];
+          const isFirst = i === 0;
+          const isLast = i === sortedClients.length - 1;
           return (
             <div key={dc.id} className="py-2.5 flex items-center gap-3">
+              <div className="flex flex-col shrink-0">
+                <button
+                  className="text-text-dim hover:text-text disabled:opacity-20 disabled:hover:text-text-dim"
+                  disabled={isFirst || updatePriority.isPending}
+                  onClick={() => moveClientUp(dc)}
+                  title="Move up (used first within protocol)"
+                >
+                  <ArrowUp size={11} />
+                </button>
+                <button
+                  className="text-text-dim hover:text-text disabled:opacity-20 disabled:hover:text-text-dim"
+                  disabled={isLast || updatePriority.isPending}
+                  onClick={() => moveClientDown(dc)}
+                  title="Move down"
+                >
+                  <ArrowDown size={11} />
+                </button>
+              </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm text-text-bright">{dc.name}</span>
@@ -497,6 +645,7 @@ function DownloadClientsSection() {
                 </div>
                 <div className="text-xs text-text-muted truncate">{dc.host}</div>
               </div>
+              <span className="text-xs text-text-muted shrink-0 font-mono">#{dc.priority}</span>
               <button className="btn" disabled={testing === dc.id} onClick={() => testClient(dc.id)} title="Test connection">
                 <Wifi size={12} className={testing === dc.id ? "animate-pulse" : ""} />
               </button>
