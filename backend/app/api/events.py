@@ -7,7 +7,7 @@ from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
@@ -131,9 +131,8 @@ async def refresh_event_metadata(
     event_id: int, session: AsyncSession = Depends(get_session)
 ) -> Event:
     """Fetch/refresh poster for a single event (Wikipedia first, TMDB optional)."""
-    from app.services.tmdb import fetch_event_poster
-
     from app.services.settings_service import load_settings
+    from app.services.tmdb import fetch_event_poster
 
     event = await session.get(Event, event_id)
     if event is None:
@@ -193,6 +192,32 @@ async def trigger_schedule_refresh() -> dict:
     return {"status": "ok", "events_synced": count}
 
 
+class SyncYearsRequest(BaseModel):
+    from_year: int
+    to_year: int
+
+
+@router.post("/command/sync-years")
+async def trigger_sync_years(req: SyncYearsRequest) -> dict:
+    """Sync UFC events for an arbitrary year range (historical or future)."""
+    from app.services.schedule_sync import sync_schedule
+
+    current = date.today().year
+    from_year = max(2001, min(req.from_year, current + 2))
+    to_year = max(from_year, min(req.to_year, current + 2))
+    years = list(range(from_year, to_year + 1))
+    count = await sync_schedule(years=years)
+    return {"status": "ok", "years": years, "events_synced": count}
+
+
+@router.post("/command/unmonitor-all")
+async def unmonitor_all_events(session: AsyncSession = Depends(get_session)) -> dict:
+    """Set all events to unmonitored."""
+    await session.execute(update(Event).values(monitored=False))
+    await session.commit()
+    return {"status": "ok"}
+
+
 @router.post("/event/{event_id}/search")
 async def search_event(event_id: int, session: AsyncSession = Depends(get_session)) -> dict:
     """Trigger a manual indexer search for a single event."""
@@ -200,6 +225,7 @@ async def search_event(event_id: int, session: AsyncSession = Depends(get_sessio
     if event is None:
         raise HTTPException(status_code=404, detail="Event not found")
     from app.services.indexer_search import search_event as _search
+
     return await _search(event_id)
 
 

@@ -5,6 +5,7 @@ Idempotent: safe to run repeatedly. Existing events are updated in place
 based on slug; new events are inserted.
 """
 
+import asyncio
 import logging
 from datetime import date
 
@@ -74,7 +75,7 @@ async def _merge_events(scraped: list[ScrapedEvent]) -> int:
                     location=s.location,
                     main_event=s.main_event,
                     status=status,
-                    monitored=True,
+                    monitored=False,
                     source_url=s.source_url,
                 )
                 session.add(event)
@@ -99,7 +100,7 @@ async def _merge_events(scraped: list[ScrapedEvent]) -> int:
     logger.info("Merged %d events into the database", count)
 
     # Fire-and-forget TMDB poster fetch for any events still missing art
-    await _backfill_posters()
+    asyncio.create_task(_backfill_posters())  # noqa: RUF006
 
     return count
 

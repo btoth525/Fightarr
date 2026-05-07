@@ -6,7 +6,7 @@ import { api } from "../api/client";
 import type { Event } from "../api/types";
 import EventCard from "../components/EventCard";
 
-type Filter = "all" | "upcoming" | "monitored";
+type Filter = "all" | "upcoming" | "monitored" | "unmonitored";
 
 export default function EventsPage() {
   const [filter, setFilter] = useState<Filter>("all");
@@ -34,6 +34,7 @@ export default function EventsPage() {
 
   const filtered = events.filter((e) => {
     if (filter === "monitored" && !e.monitored) return false;
+    if (filter === "unmonitored" && e.monitored) return false;
     if (filter === "upcoming" && new Date(e.event_date) < new Date()) return false;
     if (query && !e.title.toLowerCase().includes(query.toLowerCase())) return false;
     return true;
@@ -88,7 +89,7 @@ export default function EventsPage() {
           </div>
 
           <div className="flex rounded border border-border overflow-hidden">
-            {(["all", "upcoming", "monitored"] as Filter[]).map((f) => (
+            {(["all", "upcoming", "monitored", "unmonitored"] as Filter[]).map((f) => (
               <button
                 key={f}
                 className={`px-3 py-1.5 text-sm capitalize ${
