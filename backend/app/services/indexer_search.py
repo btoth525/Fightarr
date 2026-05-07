@@ -97,37 +97,61 @@ def _build_queries(event: Event) -> list[str]:
     """Build multiple query strings for a UFC event.
 
     UFC releases never include a year tag (the Radarr #9215 problem).
-    We search by event number OR date, plus optional fighter names from the
-    main event so indexers with sparse metadata still surface the right result.
+    Priority order:
+      1. Event number (PPV) or sequential Fight Night number extracted from title
+      2. Fighter-name queries with "Fight Night" prefix — most reliable when the
+         sequential number isn't stored in our DB title
+         e.g. "UFC Fight Night Strickland Hernandez" matches
+              "UFC Fight Night 267 Strickland vs Hernandez" via AND search
+      3. Date-format fallback (only works if the indexer encodes the date in titles)
     """
     queries: list[str] = []
     d = event.event_date
 
+    # Extract fighters once — reused in multiple query variants below
+    fighters: list[str] = []
+    if event.main_event:
+        fighters = _extract_fighters(event.main_event)
+
     if event.event_number:
-        # Numbered PPVs: "UFC 300", "UFC.300"
+        # Numbered PPVs: primary by event number, fighter names as fallback
         queries += [f"UFC {event.event_number}", f"UFC.{event.event_number}"]
+        if len(fighters) >= 2:
+            queries += [
+                f"UFC {fighters[0]} {fighters[1]}",
+                f"UFC {fighters[0]}",
+            ]
     else:
-        # Fight Nights — primary: sequential number from title (e.g. "UFC Fight Night 273")
-        # Many indexers use this number rather than the air date.
+        # Fight Nights -------------------------------------------------------
+        # 1. Sequential number when it's embedded in the Wikipedia title
         fn_number = _extract_fight_night_number(event.title)
         if fn_number:
             queries += [
                 f"UFC Fight Night {fn_number}",
                 f"UFC.Fight.Night.{fn_number}",
             ]
-        # Fallback: date-format queries for indexers that use air date instead
+
+        # 2. Fighter-name queries — these work even when we don't have the
+        #    sequential number, because all words appear in release titles like
+        #    "UFC Fight Night 267 Strickland vs Hernandez Main Card 1080p".
+        #    "UFC Fight Night Strickland Hernandez" matches that via AND search.
+        if len(fighters) >= 2:
+            queries += [
+                f"UFC Fight Night {fighters[0]} {fighters[1]}",
+                f"UFC Fight Night {fighters[0]}",
+                f"UFC {fighters[0]} {fighters[1]}",
+            ]
+        elif len(fighters) == 1:
+            queries += [
+                f"UFC Fight Night {fighters[0]}",
+                f"UFC {fighters[0]}",
+            ]
+
+        # 3. Date-format fallback (only works if uploader encodes the date)
         queries += [
             f"UFC Fight Night {d.strftime('%Y %m %d')}",
             f"UFC.Fight.Night.{d.strftime('%Y.%m.%d')}",
         ]
-
-    # Supplement with fighter surnames from main_event ("Pereira vs Hill")
-    # This catches releases that index only fighter names, not event numbers.
-    if event.main_event:
-        fighters = _extract_fighters(event.main_event)
-        if fighters and len(fighters) >= 2:
-            slug = " ".join(fighters[:2])
-            queries.append(f"UFC {slug}")
 
     # Deduplicate while preserving order
     seen: set[str] = set()
