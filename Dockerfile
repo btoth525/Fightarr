@@ -43,8 +43,13 @@ COPY --from=frontend /build/dist ./static
 COPY docker/nginx.conf /etc/nginx/conf.d/fightarr.conf
 COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
-# Persistent data directories
-RUN mkdir -p /config /downloads /plex /var/log/supervisor
+# Persistent data directories + nginx writable tmp dirs
+RUN mkdir -p /config /downloads /plex /var/log/supervisor \
+    /var/lib/nginx/body /var/lib/nginx/fastcgi /var/lib/nginx/proxy \
+    /var/lib/nginx/scgi /var/lib/nginx/uwsgi /var/log/nginx \
+    && chmod -R 777 /var/lib/nginx /var/log/nginx /var/log/supervisor \
+    && ln -sf /dev/stdout /var/log/nginx/access.log \
+    && ln -sf /dev/stderr /var/log/nginx/error.log
 
 VOLUME ["/config", "/downloads", "/plex"]
 
