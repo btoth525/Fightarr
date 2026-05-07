@@ -1,6 +1,11 @@
 #!/bin/sh
 # Fightarr entrypoint — honour PUID/PGID/UMASK so files written to /config,
-# /downloads, and /plex are owned by the Unraid user, not root.
+# /downloads, and /plex are owned by the Unraid user (nobody:users = 99:100),
+# not root.
+#
+# gosu accepts raw numeric UID:GID — no adduser/addgroup calls needed, which
+# avoids the "GID already in use" crash on systems where GID 100 (users) is
+# already in the container's /etc/group.
 set -e
 
 PUID=${PUID:-99}
@@ -9,16 +14,9 @@ UMASK=${UMASK:-002}
 
 umask "$UMASK"
 
-# Create the fightarr group/user if they don't exist at the requested IDs.
-if ! getent group fightarr > /dev/null 2>&1; then
-    addgroup -g "$PGID" fightarr 2>/dev/null || addgroup --gid "$PGID" fightarr
-fi
-if ! getent passwd fightarr > /dev/null 2>&1; then
-    adduser -u "$PUID" -G fightarr -H -D fightarr 2>/dev/null || \
-    adduser --uid "$PUID" --gid "$PGID" --home /app --no-create-home --disabled-password --gecos "" fightarr
-fi
+# Fix ownership of config + log dirs so the process can write to them.
+# /downloads and /plex are bind-mounts owned by the host user already.
+chown -R "${PUID}:${PGID}" /config /var/log/supervisor 2>/dev/null || true
 
-# Ensure data dirs are accessible by our user
-chown -R "$PUID:$PGID" /config /var/log/supervisor 2>/dev/null || true
-
-exec gosu "$PUID:$PGID" "$@"
+echo "Starting Fightarr as UID=${PUID} GID=${PGID} UMASK=${UMASK}"
+exec gosu "${PUID}:${PGID}" "$@"
