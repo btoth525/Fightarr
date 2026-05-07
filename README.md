@@ -46,9 +46,11 @@ Fightarr is a purpose-built sibling to Radarr that solves this correctly. It spe
 
 ## Screenshots
 
+> The screenshots below are from earlier builds. The UI has since gained Radarr-style left-sidebar Settings tabs, a top-tab System page (Status / Tasks / Health / Logs), inline priority arrows on indexers and download clients, a Blocklist tab in Activity, sidebar count badges, toast notifications, and Discord webhook notifications. Fresh captures will land in a future commit.
+
 <table>
 <tr>
-<td><b>Events</b> — 68 events tracked across the full 2026 schedule, scraped live from Wikipedia</td>
+<td><b>Events</b> — every event tracked across the full schedule, scraped live from Wikipedia, monitor toggle per card</td>
 </tr>
 <tr>
 <td><img src="docs/screenshots/events.png" alt="Events page" /></td>
@@ -60,13 +62,19 @@ Fightarr is a purpose-built sibling to Radarr that solves this correctly. It spe
 <td><img src="docs/screenshots/calendar.png" alt="Calendar page" /></td>
 </tr>
 <tr>
-<td><b>Wanted</b> — monitored events with no file, each with a manual Search trigger</td>
+<td><b>Wanted</b> — monitored events with no file, "Search All" + per-event "Auto-Grab" buttons</td>
 </tr>
 <tr>
 <td><img src="docs/screenshots/wanted.png" alt="Wanted page" /></td>
 </tr>
 <tr>
-<td><b>Settings</b> — add Newznab-compatible indexers (NZBGeek, DrunkenSlug, NZBPlanet, etc.)</td>
+<td><b>Activity</b> — Queue / History / Blocklist tabs with live progress, sortable columns, and inline error messages</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/activity.png" alt="Activity page" /></td>
+</tr>
+<tr>
+<td><b>Settings</b> — Radarr-style left-sidebar tabs: Media Management, Indexers, Download Clients, Connect, Metadata. Inline priority arrows on indexer/client rows.</td>
 </tr>
 <tr>
 <td><img src="docs/screenshots/settings.png" alt="Settings page" /></td>

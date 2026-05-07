@@ -31,6 +31,32 @@ TORRENT_TYPES: tuple[DownloadClientType, ...] = (
     DownloadClientType.REAL_DEBRID,
 )
 
+# QueueItem statuses that mean "this event already has work in flight" — we
+# refuse to grab another release for it until one of these resolves to either
+# IMPORTED (success) or FAILED (which goes through blocklist + retry).
+IN_FLIGHT_STATUSES: tuple[QueueStatus, ...] = (
+    QueueStatus.GRABBED,
+    QueueStatus.DOWNLOADING,
+    QueueStatus.COMPLETED,  # download done, awaiting/retrying import
+)
+
+
+async def event_has_active_grab(event_id: int) -> bool:
+    """True if this event has a QueueItem in any non-terminal state.
+
+    Prevents the bug where a stuck-pending-import COMPLETED row lets
+    search_all_wanted (or another auto_search_and_grab) re-grab the same event,
+    causing repeated downloads of the same release.
+    """
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(QueueItem.id)
+            .where(QueueItem.event_id == event_id)
+            .where(QueueItem.status.in_(IN_FLIGHT_STATUSES))
+            .limit(1)
+        )
+        return result.scalar_one_or_none() is not None
+
 
 class NoClientError(Exception):
     """No enabled download client matches the release protocol."""
@@ -58,15 +84,21 @@ async def grab_release(
     allowed_types = TORRENT_TYPES if protocol == "torrent" else NZB_TYPES
 
     async with AsyncSessionLocal() as session:
-        # Skip if we already have an active grab for this exact release
-        existing = await session.execute(
+        # Skip if event already has any in-flight queue item — this prevents
+        # the duplicate-download bug where a pending-import COMPLETED row
+        # didn't block subsequent grabs.
+        any_active = await session.execute(
             select(QueueItem)
             .where(QueueItem.event_id == event_id)
-            .where(QueueItem.release_title == release_title)
-            .where(QueueItem.status.in_([QueueStatus.GRABBED, QueueStatus.DOWNLOADING]))
+            .where(QueueItem.status.in_(IN_FLIGHT_STATUSES))
+            .limit(1)
         )
-        if existing.scalar_one_or_none() is not None:
-            raise AlreadyQueuedError(f"Already queued: {release_title}")
+        active = any_active.scalar_one_or_none()
+        if active is not None:
+            raise AlreadyQueuedError(
+                f"Event already has an active download ({active.status.value}: "
+                f"{active.release_title!r}). Wait for it to import or fail."
+            )
 
         result = await session.execute(
             select(DownloadClient)
@@ -137,6 +169,15 @@ async def auto_search_and_grab(event_id: int) -> dict | None:
     """
     from app.services.indexer_search import search_event
     from app.services.release_scorer import pick_best_release
+
+    # Short-circuit if this event already has work in flight — saves an
+    # indexer round-trip and prevents the redundant-search loop.
+    if await event_has_active_grab(event_id):
+        logger.info(
+            "Auto-search skipped for event %d — already has an active queue item",
+            event_id,
+        )
+        return None
 
     logger.info("Auto-search starting for event %d", event_id)
 

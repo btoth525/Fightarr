@@ -31,8 +31,8 @@ async def search_all_wanted() -> dict:
 
     from app.core.database import AsyncSessionLocal
     from app.models.event import Event, EventStatus
-    from app.models.queue_item import QueueItem, QueueStatus
-    from app.services.grab_service import auto_search_and_grab
+    from app.models.queue_item import QueueItem
+    from app.services.grab_service import IN_FLIGHT_STATUSES, auto_search_and_grab
 
     async with AsyncSessionLocal() as session:
         # Monitored, aired, no file yet
@@ -46,11 +46,11 @@ async def search_all_wanted() -> dict:
         )
         wanted = list(result.scalars().all())
 
-        # Skip events that already have an active grab
+        # Skip events that already have any in-flight grab (GRABBED, DOWNLOADING,
+        # OR COMPLETED-pending-import) — without the COMPLETED check, a stuck
+        # import would let RSS sync re-grab the same event repeatedly.
         active_q = await session.execute(
-            select(QueueItem.event_id).where(
-                QueueItem.status.in_([QueueStatus.GRABBED, QueueStatus.DOWNLOADING])
-            )
+            select(QueueItem.event_id).where(QueueItem.status.in_(IN_FLIGHT_STATUSES))
         )
         active_event_ids = {row[0] for row in active_q.all()}
 

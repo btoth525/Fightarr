@@ -19,8 +19,20 @@ from app.models.queue_item import QueueItem, QueueStatus
 logger = logging.getLogger(__name__)
 
 
+MAX_IMPORT_ATTEMPTS = 5
+
+
 async def poll_queue() -> None:
-    """Entry point called by the scheduler every 60 s."""
+    """Entry point called by the scheduler every 60 s.
+
+    Two passes:
+      1. Active jobs (GRABBED / DOWNLOADING) — ask the download client for
+         current status, transition to COMPLETED/FAILED as appropriate, and
+         fire the importer when a job finishes.
+      2. COMPLETED items still pending import — retry import. If we exceed
+         MAX_IMPORT_ATTEMPTS, flip to FAILED so the auto-retry / blocklist
+         flow kicks in with an alternative release.
+    """
     async with AsyncSessionLocal() as session:
         result = await session.execute(
             select(QueueItem).where(
@@ -29,8 +41,10 @@ async def poll_queue() -> None:
         )
         active = list(result.scalars().all())
 
-    if not active:
-        return
+        pending_import_result = await session.execute(
+            select(QueueItem).where(QueueItem.status == QueueStatus.COMPLETED)
+        )
+        pending_import = list(pending_import_result.scalars().all())
 
     by_client: dict[int, list[QueueItem]] = {}
     for item in active:
@@ -42,6 +56,47 @@ async def poll_queue() -> None:
             await _poll_client(dc_id, items)
         except Exception as exc:
             logger.warning("Poll failed for client %d: %s", dc_id, exc)
+
+    # Retry stuck imports — a COMPLETED item with no successful import yet
+    if pending_import:
+        await _retry_pending_imports(pending_import)
+
+
+async def _retry_pending_imports(items: list[QueueItem]) -> None:
+    """Retry import on COMPLETED items. Cap at MAX_IMPORT_ATTEMPTS."""
+    async with AsyncSessionLocal() as session:
+        for item in items:
+            db_item = await session.get(QueueItem, item.id)
+            if db_item is None or db_item.status != QueueStatus.COMPLETED:
+                continue
+
+            db_item.import_attempts = (db_item.import_attempts or 0) + 1
+            if db_item.import_attempts > MAX_IMPORT_ATTEMPTS:
+                db_item.status = QueueStatus.FAILED
+                db_item.error_message = (
+                    f"Import failed after {MAX_IMPORT_ATTEMPTS} attempts: "
+                    f"{db_item.error_message or 'no video file in download path'}"
+                )
+                db_item.completed_at = datetime.now(UTC)
+                logger.warning(
+                    "Import gave up on item %d after %d attempts — flipping to FAILED",
+                    db_item.id,
+                    MAX_IMPORT_ATTEMPTS,
+                )
+                await session.commit()
+                await _handle_failure(db_item)
+                continue
+
+            logger.info(
+                "Retrying import for item %d (attempt %d/%d)",
+                db_item.id,
+                db_item.import_attempts,
+                MAX_IMPORT_ATTEMPTS,
+            )
+            just_imported = await _run_import(session, db_item)
+            await session.commit()
+            if just_imported:
+                await _handle_imported(db_item)
 
 
 async def _poll_client(dc_id: int, items: list[QueueItem]) -> None:
@@ -89,6 +144,9 @@ async def _poll_client(dc_id: int, items: list[QueueItem]) -> None:
             just_imported = False
             if db_item.status == QueueStatus.COMPLETED:
                 just_imported = await _run_import(session, db_item)
+                # _run_import can flip COMPLETED → FAILED on a hard import error
+                if db_item.status == QueueStatus.FAILED:
+                    just_failed = True
 
             # Side effects after status transitions — done after commit so
             # rows are persisted before notifications/retries kick off.

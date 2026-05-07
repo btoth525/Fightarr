@@ -45,5 +45,10 @@ class QueueItem(Base):
     progress_percent: Mapped[float] = mapped_column(default=0.0)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # How many times we've attempted to import this download. Caps the retry
+    # loop so a stuck COMPLETED item eventually flips to FAILED (which then
+    # triggers blocklist + auto-search for an alternative release).
+    import_attempts: Mapped[int] = mapped_column(Integer, default=0)
+
     grabbed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
