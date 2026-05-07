@@ -1,34 +1,42 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { format, parseISO } from "date-fns";
+import { format, parseISO, differenceInDays } from "date-fns";
 import {
-  ArrowLeft,
-  Search,
   RefreshCw,
-  Download,
+  Search,
+  History,
+  ChevronLeft,
+  ChevronRight,
+  ExternalLink,
   MapPin,
   Calendar,
-  ExternalLink,
-  Clock,
   HardDrive,
+  Download,
+  AlertTriangle,
 } from "lucide-react";
 import clsx from "clsx";
 
 import { api } from "../api/client";
 import type { Event, SearchRelease, HistoryItem } from "../api/types";
 import StatusBadge from "../components/StatusBadge";
+import Modal from "../components/Modal";
 
-type Tab = "overview" | "search" | "history";
+// ---------------------------------------------------------------------------
+// Main page
+// ---------------------------------------------------------------------------
 
 export default function EventDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<Tab>("overview");
-  const [imgError, setImgError] = useState(false);
-
   const eventId = Number(id);
+
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [imgError, setImgError] = useState(false);
+  const [searchResults, setSearchResults] = useState<SearchRelease[] | null>(null);
+  const [searchMessage, setSearchMessage] = useState<string | null>(null);
 
   const { data: event, isLoading } = useQuery({
     queryKey: ["event", eventId],
@@ -36,10 +44,25 @@ export default function EventDetailPage() {
     enabled: !!eventId,
   });
 
+  // All events for prev/next navigation — already cached by EventsPage
+  const { data: allEvents = [] } = useQuery({
+    queryKey: ["events"],
+    queryFn: () => api.get<Event[]>("/event"),
+    staleTime: Infinity, // use whatever's cached
+  });
+
+  // Sort by date descending; find neighbors
+  const sorted = [...allEvents].sort(
+    (a, b) => new Date(b.event_date).getTime() - new Date(a.event_date).getTime(),
+  );
+  const idx = sorted.findIndex((e) => e.id === eventId);
+  const prevEvent = idx > 0 ? sorted[idx - 1] : null;
+  const nextEvent = idx < sorted.length - 1 ? sorted[idx + 1] : null;
+
   const { data: history = [] } = useQuery({
     queryKey: ["event-history", eventId],
     queryFn: () => api.get<HistoryItem[]>(`/event/${eventId}/history`),
-    enabled: activeTab === "history" && !!eventId,
+    enabled: isHistoryOpen && !!eventId,
   });
 
   const toggleMonitored = useMutation({
@@ -56,16 +79,15 @@ export default function EventDetailPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["event", eventId] }),
   });
 
-  const [searchResults, setSearchResults] = useState<SearchRelease[] | null>(null);
-  const [searchError, setSearchError] = useState<string | null>(null);
-
   const doSearch = useMutation({
-    mutationFn: () => api.post<{ releases: SearchRelease[]; total: number; message?: string }>(`/event/${eventId}/search`),
+    mutationFn: () =>
+      api.post<{ releases: SearchRelease[]; total: number; message?: string }>(
+        `/event/${eventId}/search`,
+      ),
     onSuccess: (data) => {
       setSearchResults(data.releases);
-      setSearchError(data.message ?? null);
+      setSearchMessage(data.message ?? null);
     },
-    onError: (err) => setSearchError((err as Error).message),
   });
 
   const grab = useMutation({
@@ -79,309 +101,410 @@ export default function EventDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["event", eventId] });
       queryClient.invalidateQueries({ queryKey: ["event-history", eventId] });
-      setActiveTab("history");
+      setIsSearchOpen(false);
+      setIsHistoryOpen(true);
     },
   });
 
-  if (isLoading) {
-    return <div className="p-8 text-text-muted">Loading…</div>;
+  // Keyboard navigation (left/right arrows)
+  const handleKeyUp = useCallback(
+    (e: KeyboardEvent) => {
+      if (isSearchOpen || isHistoryOpen) return;
+      if (e.composedPath && e.composedPath().length === 4) {
+        if (e.key === "ArrowLeft" && prevEvent) navigate(`/events/${prevEvent.id}`);
+        if (e.key === "ArrowRight" && nextEvent) navigate(`/events/${nextEvent.id}`);
+      }
+    },
+    [isSearchOpen, isHistoryOpen, prevEvent, nextEvent, navigate],
+  );
+
+  useEffect(() => {
+    window.addEventListener("keyup", handleKeyUp);
+    return () => window.removeEventListener("keyup", handleKeyUp);
+  }, [handleKeyUp]);
+
+  function handleOpenSearch() {
+    setIsSearchOpen(true);
+    if (searchResults === null) doSearch.mutate();
   }
-  if (!event) {
-    return <div className="p-8 text-status-missing">Event not found.</div>;
-  }
+
+  if (isLoading) return <div className="p-8 text-text-muted">Loading…</div>;
+  if (!event) return <div className="p-8 text-status-missing">Event not found.</div>;
 
   const date = parseISO(event.event_date);
   const showPoster = event.poster_url && !imgError;
 
   return (
-    <div className="space-y-0 max-w-5xl">
-      {/* Back nav */}
-      <button
-        className="flex items-center gap-1.5 text-sm text-text-muted hover:text-text mb-4"
-        onClick={() => navigate(-1)}
-      >
-        <ArrowLeft size={14} />
-        Back to Events
-      </button>
+    <div className="-m-6 flex flex-col min-h-full">
+      {/* ── Toolbar ── */}
+      <div className="flex items-center justify-between px-6 py-2.5 border-b border-border bg-bg-panel shrink-0">
+        <div className="flex items-center gap-1">
+          <ToolbarBtn
+            icon={<RefreshCw size={14} className={refreshMetadata.isPending ? "animate-spin" : ""} />}
+            label="Refresh & Scan"
+            onClick={() => refreshMetadata.mutate()}
+            disabled={refreshMetadata.isPending}
+          />
+          <ToolbarBtn
+            icon={<Search size={14} />}
+            label="Interactive Search"
+            onClick={handleOpenSearch}
+          />
+          <div className="w-px h-5 bg-border mx-1" />
+          <ToolbarBtn
+            icon={<History size={14} />}
+            label="History"
+            onClick={() => setIsHistoryOpen(true)}
+          />
+        </div>
 
-      {/* Hero section */}
-      <div className="card p-0 overflow-hidden mb-6">
-        <div className="flex gap-0">
-          {/* Poster */}
-          <div className="relative w-40 shrink-0 bg-gradient-to-br from-bg-elevated via-bg-panel to-bg-input flex items-center justify-center">
+        {/* Prev / Next navigation */}
+        <div className="flex items-center gap-3">
+          {prevEvent && (
+            <button
+              className="flex items-center gap-1 text-xs text-text-dim hover:text-text-bright transition-colors max-w-[180px]"
+              onClick={() => navigate(`/events/${prevEvent.id}`)}
+              title={prevEvent.title}
+            >
+              <ChevronLeft size={14} className="shrink-0" />
+              <span className="truncate">{prevEvent.title}</span>
+            </button>
+          )}
+          {nextEvent && (
+            <button
+              className="flex items-center gap-1 text-xs text-text-dim hover:text-text-bright transition-colors max-w-[180px]"
+              onClick={() => navigate(`/events/${nextEvent.id}`)}
+              title={nextEvent.title}
+            >
+              <span className="truncate">{nextEvent.title}</span>
+              <ChevronRight size={14} className="shrink-0" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* ── Backdrop header ── */}
+      <div className="relative overflow-hidden shrink-0" style={{ height: 340 }}>
+        {/* Blurred poster as backdrop */}
+        {showPoster && (
+          <div
+            className="absolute inset-0 bg-center bg-cover"
+            style={{
+              backgroundImage: `url(${event.poster_url})`,
+              filter: "blur(28px)",
+              transform: "scale(1.15)",
+              opacity: 0.35,
+            }}
+          />
+        )}
+        {/* Gradient overlay — darkens toward bottom so content is readable */}
+        <div className="absolute inset-0 bg-gradient-to-t from-bg via-bg/70 to-bg/10" />
+
+        {/* Header content */}
+        <div className="relative h-full flex items-end gap-6 px-8 pb-5">
+          {/* Poster — floats down 40px into content */}
+          <div
+            className="w-40 shrink-0 rounded-lg overflow-hidden shadow-2xl border border-white/10"
+            style={{ marginBottom: -56, zIndex: 10 }}
+          >
             {showPoster ? (
               <img
                 src={event.poster_url!}
                 alt={event.title}
-                className="w-full h-full object-cover"
-                style={{ minHeight: 240 }}
+                className="w-full"
                 onError={() => setImgError(true)}
               />
             ) : (
-              <div className="text-center px-3 py-8">
+              <div className="aspect-[2/3] bg-bg-elevated flex items-center justify-center">
                 {event.event_number !== null ? (
-                  <div className="text-6xl font-bold text-accent leading-none tracking-tighter">
-                    {event.event_number}
-                  </div>
+                  <span className="text-5xl font-bold text-accent">{event.event_number}</span>
                 ) : (
-                  <div className="text-xs text-text-dim uppercase tracking-widest font-semibold">
-                    Fight Night
-                  </div>
+                  <span className="text-xs text-text-dim uppercase tracking-widest">Fight Night</span>
                 )}
               </div>
             )}
           </div>
 
           {/* Metadata */}
-          <div className="flex-1 p-6 min-w-0">
-            <div className="flex items-start justify-between gap-4 flex-wrap">
-              <div>
-                <h1 className="text-2xl font-bold text-text-bright leading-tight">
-                  {event.title}
-                </h1>
-                <div className="flex items-center gap-3 mt-1 text-sm text-text-muted flex-wrap">
-                  <span className="flex items-center gap-1">
-                    <Calendar size={13} />
-                    {format(date, "EEEE, MMMM d, yyyy")}
-                  </span>
-                  {event.venue && (
-                    <span className="flex items-center gap-1">
-                      <MapPin size={13} />
-                      {event.venue}
-                      {event.location && `, ${event.location}`}
-                    </span>
-                  )}
-                </div>
-              </div>
-              <StatusBadge status={event.status} />
-            </div>
-
-            {event.main_event && (
-              <div className="mt-3">
-                <span className="text-xs text-text-dim uppercase tracking-wider">Main Event</span>
-                <p className="text-base font-semibold text-text-bright mt-0.5">{event.main_event}</p>
-              </div>
-            )}
-            {event.co_main_event && (
-              <div className="mt-2">
-                <span className="text-xs text-text-dim uppercase tracking-wider">Co-Main</span>
-                <p className="text-sm text-text mt-0.5">{event.co_main_event}</p>
-              </div>
-            )}
-
-            {/* Action buttons */}
-            <div className="flex items-center gap-2 mt-5 flex-wrap">
-              {/* Monitored toggle */}
+          <div className="flex-1 pb-1 min-w-0">
+            {/* Monitor toggle + title */}
+            <div className="flex items-center gap-3">
               <button
                 className={clsx(
-                  "flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium border transition-colors",
+                  "w-8 h-8 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors",
                   event.monitored
-                    ? "bg-accent/10 border-accent text-accent hover:bg-accent/20"
-                    : "bg-bg-panel border-border text-text-muted hover:border-border-strong",
+                    ? "bg-accent border-accent text-black"
+                    : "bg-transparent border-border/60 text-text-dim hover:border-border",
                 )}
                 onClick={() => toggleMonitored.mutate()}
-                disabled={toggleMonitored.isPending}
+                title={event.monitored ? "Monitored — click to unmonitor" : "Unmonitored — click to monitor"}
               >
-                <span>{event.monitored ? "●" : "○"}</span>
-                {event.monitored ? "Monitored" : "Unmonitored"}
+                <span className="text-sm leading-none">{event.monitored ? "●" : "○"}</span>
               </button>
+              <h1 className="text-2xl font-bold text-white leading-tight truncate">
+                {event.title}
+              </h1>
+            </div>
 
-              <button
-                className="btn-primary flex items-center gap-1.5 text-sm"
-                onClick={() => {
-                  setActiveTab("search");
-                  doSearch.mutate();
-                }}
-                disabled={doSearch.isPending}
-              >
-                <Search size={14} />
-                {doSearch.isPending ? "Searching…" : "Search"}
-              </button>
-
-              <button
-                className="btn-secondary flex items-center gap-1.5 text-sm"
-                onClick={() => refreshMetadata.mutate()}
-                disabled={refreshMetadata.isPending}
-              >
-                <RefreshCw size={14} className={refreshMetadata.isPending ? "animate-spin" : ""} />
-                Refresh Art
-              </button>
-
-              {event.source_url && (
-                <a
-                  href={event.source_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="btn-secondary flex items-center gap-1.5 text-sm"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <ExternalLink size={14} />
-                  Wikipedia
-                </a>
+            {/* Date / venue */}
+            <div className="flex items-center gap-4 mt-1.5 text-sm text-text-muted flex-wrap">
+              <span className="flex items-center gap-1.5">
+                <Calendar size={13} />
+                {format(date, "EEEE, MMMM d, yyyy")}
+              </span>
+              {event.venue && (
+                <span className="flex items-center gap-1.5">
+                  <MapPin size={13} />
+                  {event.venue}{event.location && `, ${event.location}`}
+                </span>
               )}
             </div>
+
+            {/* Badges */}
+            <div className="flex items-center gap-2 mt-3 flex-wrap">
+              <StatusBadge status={event.status} />
+              {event.quality && (
+                <span className="px-2 py-0.5 text-xs bg-bg-elevated/80 border border-border rounded text-text-muted">
+                  {event.quality}
+                </span>
+              )}
+              <span className="px-2 py-0.5 text-xs bg-bg-elevated/80 border border-border rounded text-text-dim uppercase tracking-wider">
+                {event.event_type?.replace(/_/g, " ")}
+              </span>
+            </div>
+
+            {/* Main event fighters */}
+            {event.main_event && (
+              <p className="mt-3 text-lg font-semibold text-white/90">
+                {event.main_event}
+                {event.co_main_event && (
+                  <span className="text-text-muted font-normal text-sm ml-3">
+                    | {event.co_main_event}
+                  </span>
+                )}
+              </p>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="border-b border-border mb-4">
-        <div className="flex gap-0">
-          {(["overview", "search", "history"] as Tab[]).map((tab) => (
-            <button
-              key={tab}
-              className={clsx(
-                "px-4 py-2.5 text-sm capitalize border-b-2 -mb-px transition-colors",
-                activeTab === tab
-                  ? "border-accent text-text-bright font-medium"
-                  : "border-transparent text-text-muted hover:text-text",
-              )}
-              onClick={() => setActiveTab(tab)}
-            >
-              {tab}
-              {tab === "history" && history.length > 0 && (
-                <span className="ml-1.5 px-1.5 py-0.5 text-xs bg-bg-elevated rounded-full text-text-muted">
-                  {history.length}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
+      {/* ── Content body (below poster overlap) ── */}
+      <div className="flex-1 px-8 pt-20 pb-8 space-y-6">
+        {/* Details section */}
+        <SectionCard title="Event Details">
+          <div className="grid grid-cols-2 gap-0 divide-y divide-border">
+            <InfoRow label="Status" value={<StatusBadge status={event.status} />} />
+            <InfoRow label="Monitored" value={event.monitored ? "Yes" : "No"} />
+            <InfoRow label="Event Type" value={event.event_type?.replace(/_/g, " ").toUpperCase() ?? "—"} />
+            <InfoRow label="Event Number" value={event.event_number ?? "—"} />
+            <InfoRow label="Date" value={format(date, "MMMM d, yyyy")} />
+            <InfoRow label="Venue" value={event.venue ?? "—"} />
+            <InfoRow label="Location" value={event.location ?? "—"} />
+            <InfoRow label="Quality" value={event.quality ?? "Unknown"} />
+            {event.source_url && (
+              <InfoRow
+                label="Source"
+                value={
+                  <a
+                    href={event.source_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-accent hover:underline"
+                  >
+                    Wikipedia <ExternalLink size={11} />
+                  </a>
+                }
+              />
+            )}
+          </div>
+        </SectionCard>
+
+        {/* File section */}
+        {event.file_path && (
+          <SectionCard title="File">
+            <div className="px-4 py-3 flex items-center gap-3 text-sm">
+              <HardDrive size={14} className="text-text-dim" />
+              <span className="font-mono text-text-bright text-xs">{event.file_path}</span>
+            </div>
+          </SectionCard>
+        )}
       </div>
 
-      {/* Tab content */}
-      {activeTab === "overview" && (
-        <OverviewTab event={event} />
-      )}
-      {activeTab === "search" && (
-        <SearchTab
+      {/* ── History Modal ── */}
+      <Modal
+        isOpen={isHistoryOpen}
+        onClose={() => setIsHistoryOpen(false)}
+        title={`History — ${event.title}`}
+        size="xl"
+      >
+        <HistoryModalContent items={history} />
+      </Modal>
+
+      {/* ── Interactive Search Modal ── */}
+      <Modal
+        isOpen={isSearchOpen}
+        onClose={() => setIsSearchOpen(false)}
+        title={`Interactive Search — ${event.title}`}
+        size="xxl"
+      >
+        <InteractiveSearchContent
           results={searchResults}
-          error={searchError}
+          message={searchMessage}
           isSearching={doSearch.isPending}
           onSearch={() => doSearch.mutate()}
           onGrab={(r) => grab.mutate(r)}
           grabbingTitle={grab.isPending ? (grab.variables as SearchRelease)?.title : null}
         />
-      )}
-      {activeTab === "history" && (
-        <HistoryTab items={history} />
-      )}
+      </Modal>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Overview tab
+// Toolbar button
 // ---------------------------------------------------------------------------
 
-function OverviewTab({ event }: { event: Event }) {
-  const rows: Array<{ label: string; value: string | number | null | undefined }> = [
-    { label: "Status", value: event.status },
-    { label: "Event Type", value: event.event_type?.replace(/_/g, " ").toUpperCase() },
-    { label: "Event Number", value: event.event_number ?? "—" },
-    { label: "Date", value: format(parseISO(event.event_date), "MMMM d, yyyy") },
-    { label: "Venue", value: event.venue ?? "—" },
-    { label: "Location", value: event.location ?? "—" },
-    { label: "Main Event", value: event.main_event ?? "—" },
-    { label: "Co-Main Event", value: event.co_main_event ?? "—" },
-    { label: "Quality", value: event.quality ?? "Unknown" },
-  ];
-
+function ToolbarBtn({
+  icon,
+  label,
+  onClick,
+  disabled = false,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
   return (
-    <div className="card p-0 divide-y divide-border">
-      {rows.map(({ label, value }) => (
-        <div key={label} className="flex items-center px-4 py-3 gap-8">
-          <span className="w-36 shrink-0 text-sm text-text-muted">{label}</span>
-          <span className="text-sm text-text-bright">{String(value ?? "—")}</span>
-        </div>
-      ))}
+    <button
+      className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs text-text-muted hover:text-text-bright hover:bg-bg-elevated transition-colors disabled:opacity-40"
+      onClick={onClick}
+      disabled={disabled}
+    >
+      {icon}
+      <span>{label}</span>
+    </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Section card
+// ---------------------------------------------------------------------------
+
+function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <h2 className="text-xs font-semibold text-text-dim uppercase tracking-widest mb-2">
+        {title}
+      </h2>
+      <div className="card p-0 overflow-hidden">{children}</div>
+    </div>
+  );
+}
+
+function InfoRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center gap-6 px-4 py-2.5 col-span-1">
+      <span className="w-32 shrink-0 text-sm text-text-muted">{label}</span>
+      <span className="text-sm text-text-bright">{value}</span>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Search tab
+// Interactive Search modal content — mirrors Radarr's InteractiveSearch table
 // ---------------------------------------------------------------------------
 
-function SearchTab({
+function InteractiveSearchContent({
   results,
-  error,
+  message,
   isSearching,
   onSearch,
   onGrab,
   grabbingTitle,
 }: {
   results: SearchRelease[] | null;
-  error: string | null;
+  message: string | null;
   isSearching: boolean;
   onSearch: () => void;
   onGrab: (r: SearchRelease) => void;
   grabbingTitle: string | null;
 }) {
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-text-muted">
-          {results === null
-            ? "Search all configured indexers for this event."
+    <div>
+      {/* Sub-header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-bg-elevated/40">
+        <p className="text-xs text-text-muted">
+          {isSearching
+            ? "Searching indexers…"
+            : results === null
+            ? "Click Search to query all configured indexers."
             : results.length === 0
             ? "No releases found."
-            : `${results.length} release${results.length !== 1 ? "s" : ""} found.`}
+            : `${results.length} release${results.length !== 1 ? "s" : ""} found across all indexers.`}
         </p>
         <button
-          className="btn-primary flex items-center gap-1.5 text-sm"
+          className="btn-primary flex items-center gap-1.5 text-xs px-3 py-1.5"
           onClick={onSearch}
           disabled={isSearching}
         >
-          <Search size={14} />
-          {isSearching ? "Searching…" : results === null ? "Search Indexers" : "Search Again"}
+          <Search size={12} />
+          {isSearching ? "Searching…" : "Search"}
         </button>
       </div>
 
-      {error && (
-        <div className="card p-3 text-sm text-status-missing border-status-missing/30">
-          {error}
+      {message && (
+        <div className="mx-4 mt-3 p-2.5 text-xs text-status-missing bg-status-missing/10 border border-status-missing/30 rounded">
+          {message}
+        </div>
+      )}
+
+      {isSearching && (
+        <div className="p-8 text-center text-text-muted text-sm">
+          <Search size={24} className="mx-auto mb-3 animate-pulse opacity-40" />
+          Querying indexers…
+        </div>
+      )}
+
+      {!isSearching && results !== null && results.length === 0 && (
+        <div className="p-8 text-center text-text-muted text-sm">
+          <AlertTriangle size={24} className="mx-auto mb-3 opacity-40" />
+          <p>No releases found.</p>
+          <p className="text-xs mt-1 text-text-dim">
+            Fightarr searches without a year tag — UFC releases are searched by event number or date.
+          </p>
         </div>
       )}
 
       {results !== null && results.length > 0 && (
-        <div className="card p-0 overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-border bg-bg-elevated">
-                <th className="text-left px-4 py-2.5 text-xs text-text-muted font-medium uppercase tracking-wider">
-                  Release
-                </th>
-                <th className="text-left px-4 py-2.5 text-xs text-text-muted font-medium uppercase tracking-wider">
-                  Indexer
-                </th>
-                <th className="text-right px-4 py-2.5 text-xs text-text-muted font-medium uppercase tracking-wider">
-                  Size
-                </th>
-                <th className="px-4 py-2.5" />
+              <tr className="border-b border-border bg-bg-elevated/60">
+                {["Source", "Age", "Title", "Indexer", "Size", ""].map((h) => (
+                  <th
+                    key={h}
+                    className="text-left px-3 py-2 text-text-dim font-medium uppercase tracking-wider whitespace-nowrap"
+                  >
+                    {h}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {results.map((r) => (
-                <tr key={r.guid ?? r.title} className="hover:bg-bg-elevated/50 transition-colors">
-                  <td className="px-4 py-3 text-text-bright max-w-xs">
-                    <span className="line-clamp-1 font-mono text-xs">{r.title}</span>
-                  </td>
-                  <td className="px-4 py-3 text-text-muted text-xs">{r.indexer_name}</td>
-                  <td className="px-4 py-3 text-text-muted text-xs text-right whitespace-nowrap">
-                    {r.size_bytes ? formatBytes(r.size_bytes) : "—"}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      className="flex items-center gap-1 text-xs px-2.5 py-1 rounded bg-accent/10 border border-accent/40 text-accent hover:bg-accent/20 transition-colors disabled:opacity-40"
-                      onClick={() => onGrab(r)}
-                      disabled={grabbingTitle === r.title}
-                    >
-                      <Download size={11} />
-                      {grabbingTitle === r.title ? "Grabbing…" : "Grab"}
-                    </button>
-                  </td>
-                </tr>
+                <SearchResultRow
+                  key={r.guid ?? r.title}
+                  release={r}
+                  onGrab={() => onGrab(r)}
+                  isGrabbing={grabbingTitle === r.title}
+                />
               ))}
             </tbody>
           </table>
@@ -391,14 +514,76 @@ function SearchTab({
   );
 }
 
+function SearchResultRow({
+  release,
+  onGrab,
+  isGrabbing,
+}: {
+  release: SearchRelease;
+  onGrab: () => void;
+  isGrabbing: boolean;
+}) {
+  const ageDays = release.pub_date
+    ? Math.abs(differenceInDays(new Date(), new Date(release.pub_date)))
+    : null;
+
+  // Rough quality detection from title
+  const quality = detectQuality(release.title);
+
+  return (
+    <tr className="hover:bg-bg-elevated/40 transition-colors group">
+      {/* Source */}
+      <td className="px-3 py-2.5 whitespace-nowrap">
+        <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-bg-elevated border border-border text-text-muted uppercase">
+          NZB
+        </span>
+      </td>
+      {/* Age */}
+      <td className="px-3 py-2.5 text-text-muted whitespace-nowrap">
+        {ageDays !== null ? `${ageDays}d` : "—"}
+      </td>
+      {/* Title */}
+      <td className="px-3 py-2.5 max-w-xs">
+        <span className="font-mono text-text-bright line-clamp-1" title={release.title}>
+          {release.title}
+        </span>
+      </td>
+      {/* Indexer */}
+      <td className="px-3 py-2.5 text-text-muted whitespace-nowrap">{release.indexer_name}</td>
+      {/* Size */}
+      <td className="px-3 py-2.5 text-text-muted whitespace-nowrap">
+        {release.size_bytes ? formatBytes(release.size_bytes) : "—"}
+      </td>
+      {/* Grab */}
+      <td className="px-3 py-2.5 text-right whitespace-nowrap">
+        <div className="flex items-center justify-end gap-2">
+          {quality && (
+            <span className="px-1.5 py-0.5 rounded text-[10px] bg-bg-elevated border border-border text-accent">
+              {quality}
+            </span>
+          )}
+          <button
+            className="flex items-center gap-1 px-2.5 py-1 rounded bg-accent text-black text-xs font-medium hover:bg-accent/90 transition-colors disabled:opacity-40"
+            onClick={onGrab}
+            disabled={isGrabbing}
+          >
+            <Download size={11} />
+            {isGrabbing ? "Grabbing…" : "Grab"}
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
 // ---------------------------------------------------------------------------
-// History tab
+// History modal content
 // ---------------------------------------------------------------------------
 
-function HistoryTab({ items }: { items: HistoryItem[] }) {
+function HistoryModalContent({ items }: { items: HistoryItem[] }) {
   if (items.length === 0) {
     return (
-      <div className="card p-8 text-center text-text-muted text-sm">
+      <div className="p-8 text-center text-text-muted text-sm">
         No download history for this event yet.
       </div>
     );
@@ -413,70 +598,71 @@ function HistoryTab({ items }: { items: HistoryItem[] }) {
   };
 
   return (
-    <div className="card p-0 overflow-hidden">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-border bg-bg-elevated">
-            <th className="text-left px-4 py-2.5 text-xs text-text-muted font-medium uppercase tracking-wider">
-              Release
+    <table className="w-full text-xs">
+      <thead>
+        <tr className="border-b border-border bg-bg-elevated/60">
+          {["Source", "Age", "Title", "Indexer", "Status", "Size"].map((h) => (
+            <th
+              key={h}
+              className="text-left px-3 py-2 text-text-dim font-medium uppercase tracking-wider whitespace-nowrap"
+            >
+              {h}
             </th>
-            <th className="text-left px-4 py-2.5 text-xs text-text-muted font-medium uppercase tracking-wider">
-              Indexer
-            </th>
-            <th className="text-left px-4 py-2.5 text-xs text-text-muted font-medium uppercase tracking-wider">
-              Status
-            </th>
-            <th className="text-right px-4 py-2.5 text-xs text-text-muted font-medium uppercase tracking-wider">
-              Size
-            </th>
-            <th className="text-right px-4 py-2.5 text-xs text-text-muted font-medium uppercase tracking-wider">
-              Grabbed
-            </th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border">
-          {items.map((item) => (
-            <tr key={item.id} className="hover:bg-bg-elevated/50 transition-colors">
-              <td className="px-4 py-3 max-w-xs">
-                <span className="line-clamp-1 font-mono text-xs text-text-bright">
+          ))}
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-border">
+        {items.map((item) => {
+          const ageDays = item.grabbed_at
+            ? Math.abs(differenceInDays(new Date(), new Date(item.grabbed_at)))
+            : null;
+          return (
+            <tr key={item.id} className="hover:bg-bg-elevated/40 transition-colors">
+              <td className="px-3 py-2.5">
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-bg-elevated border border-border text-text-muted uppercase">
+                  NZB
+                </span>
+              </td>
+              <td className="px-3 py-2.5 text-text-muted whitespace-nowrap">
+                {ageDays !== null ? `${ageDays}d` : "—"}
+              </td>
+              <td className="px-3 py-2.5 max-w-xs">
+                <span
+                  className="font-mono text-text-bright line-clamp-1"
+                  title={item.release_title}
+                >
                   {item.release_title}
                 </span>
                 {item.error_message && (
-                  <p className="text-xs text-status-missing mt-0.5">{item.error_message}</p>
+                  <p className="text-status-missing mt-0.5 flex items-center gap-1">
+                    <AlertTriangle size={10} /> {item.error_message}
+                  </p>
                 )}
               </td>
-              <td className="px-4 py-3 text-xs text-text-muted">{item.indexer_name ?? "—"}</td>
-              <td className="px-4 py-3">
-                <div className="flex items-center gap-1.5">
-                  <span className={clsx("text-xs font-medium capitalize", statusColor[item.status])}>
-                    {item.status}
-                  </span>
-                  {item.status === "downloading" && item.progress_percent > 0 && (
-                    <span className="text-xs text-text-dim">
-                      {Math.round(item.progress_percent)}%
-                    </span>
-                  )}
-                </div>
+              <td className="px-3 py-2.5 text-text-muted whitespace-nowrap">
+                {item.indexer_name ?? "—"}
               </td>
-              <td className="px-4 py-3 text-xs text-text-muted text-right whitespace-nowrap">
-                <span className="flex items-center justify-end gap-1">
-                  <HardDrive size={11} />
+              <td className="px-3 py-2.5 whitespace-nowrap">
+                <span className={clsx("font-medium capitalize", statusColor[item.status])}>
+                  {item.status}
+                </span>
+                {item.status === "downloading" && item.progress_percent > 0 && (
+                  <span className="text-text-dim ml-1">
+                    {Math.round(item.progress_percent)}%
+                  </span>
+                )}
+              </td>
+              <td className="px-3 py-2.5 text-text-muted whitespace-nowrap">
+                <span className="flex items-center gap-1">
+                  <HardDrive size={10} />
                   {item.release_size_bytes ? formatBytes(item.release_size_bytes) : "—"}
                 </span>
               </td>
-              <td className="px-4 py-3 text-xs text-text-muted text-right whitespace-nowrap">
-                <span className="flex items-center justify-end gap-1">
-                  <Clock size={11} />
-                  {item.grabbed_at
-                    ? format(new Date(item.grabbed_at), "MMM d, HH:mm")
-                    : "—"}
-                </span>
-              </td>
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          );
+        })}
+      </tbody>
+    </table>
   );
 }
 
@@ -488,4 +674,13 @@ function formatBytes(bytes: number): string {
   if (bytes >= 1_073_741_824) return `${(bytes / 1_073_741_824).toFixed(1)} GB`;
   if (bytes >= 1_048_576) return `${(bytes / 1_048_576).toFixed(0)} MB`;
   return `${(bytes / 1024).toFixed(0)} KB`;
+}
+
+function detectQuality(title: string): string | null {
+  const t = title.toUpperCase();
+  if (t.includes("2160P") || t.includes("4K")) return "2160p";
+  if (t.includes("1080P")) return "1080p";
+  if (t.includes("720P")) return "720p";
+  if (t.includes("480P")) return "480p";
+  return null;
 }

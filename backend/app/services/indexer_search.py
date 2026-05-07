@@ -75,10 +75,56 @@ async def search_event(event_id: int) -> dict:
 
 
 def _build_queries(event: Event) -> list[str]:
-    if event.event_number:
-        return [f"UFC {event.event_number}", f"UFC.{event.event_number}"]
+    """Build multiple query strings for a UFC event.
+
+    UFC releases never include a year tag (the Radarr #9215 problem).
+    We search by event number OR date, plus optional fighter names from the
+    main event so indexers with sparse metadata still surface the right result.
+    """
+    queries: list[str] = []
     d = event.event_date
-    return [
-        f"UFC Fight Night {d.strftime('%Y %m %d')}",
-        f"UFC.Fight.Night.{d.strftime('%Y.%m.%d')}",
-    ]
+
+    if event.event_number:
+        # Numbered PPVs: "UFC 300", "UFC.300"
+        queries += [f"UFC {event.event_number}", f"UFC.{event.event_number}"]
+    else:
+        # Fight Nights and specials — search by date
+        queries += [
+            f"UFC Fight Night {d.strftime('%Y %m %d')}",
+            f"UFC.Fight.Night.{d.strftime('%Y.%m.%d')}",
+            # Some indexers use just the year-month-day without "Fight.Night"
+            f"UFC {d.strftime('%Y %m %d')}",
+            f"UFC.{d.strftime('%Y.%m.%d')}",
+        ]
+
+    # Supplement with fighter surnames from main_event ("Pereira vs Hill")
+    # This catches releases that index only fighter names, not event numbers.
+    if event.main_event:
+        fighters = _extract_fighters(event.main_event)
+        if fighters and len(fighters) >= 2:
+            slug = " ".join(fighters[:2])
+            queries.append(f"UFC {slug}")
+
+    # Deduplicate while preserving order
+    seen: set[str] = set()
+    unique: list[str] = []
+    for q in queries:
+        if q not in seen:
+            seen.add(q)
+            unique.append(q)
+    return unique
+
+
+def _extract_fighters(main_event: str) -> list[str]:
+    """Extract surnames from a 'Fighter A vs Fighter B' string."""
+    import re
+
+    # Strip descriptors like "(c)" and extra whitespace
+    clean = re.sub(r"\(.*?\)", "", main_event).strip()
+    parts = re.split(r"\s+vs\.?\s+", clean, flags=re.IGNORECASE)
+    surnames: list[str] = []
+    for part in parts:
+        words = part.strip().split()
+        if words:
+            surnames.append(words[-1])  # last word = surname
+    return surnames

@@ -36,6 +36,7 @@ class EventOut(BaseModel):
     poster_url: str | None = None
     tmdb_id: int | None = None
     source_url: str | None = None
+    file_path: str | None = None
 
     model_config = {"from_attributes": True}
 

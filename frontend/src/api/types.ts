@@ -30,6 +30,7 @@ export interface Event {
   poster_url: string | null;
   tmdb_id: number | null;
   source_url: string | null;
+  file_path: string | null;
 }
 
 export interface QueueItem {
