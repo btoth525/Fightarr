@@ -35,12 +35,20 @@ class EventOut(BaseModel):
     quality: str | None
     poster_url: str | None = None
     tmdb_id: int | None = None
+    source_url: str | None = None
 
     model_config = {"from_attributes": True}
 
 
 class EventUpdate(BaseModel):
     monitored: bool | None = None
+
+
+class GrabRequest(BaseModel):
+    nzb_url: str
+    release_title: str
+    size_bytes: int | None = None
+    indexer_name: str | None = None
 
 
 # --- Routes ----------------------------------------------------------------
@@ -192,3 +200,83 @@ async def search_event(event_id: int, session: AsyncSession = Depends(get_sessio
         raise HTTPException(status_code=404, detail="Event not found")
     from app.services.indexer_search import search_event as _search
     return await _search(event_id)
+
+
+@router.post("/event/{event_id}/grab")
+async def grab_event(
+    event_id: int,
+    grab: GrabRequest,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Push a release to the best available download client and create a QueueItem."""
+    from app.models.download_client import DownloadClient
+    from app.models.queue_item import QueueItem
+    from app.services.download_clients.factory import build_client
+
+    event = await session.get(Event, event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    result = await session.execute(
+        select(DownloadClient)
+        .where(DownloadClient.enabled.is_(True))
+        .order_by(DownloadClient.priority)
+    )
+    dc = result.scalar_one_or_none()
+    if dc is None:
+        raise HTTPException(status_code=400, detail="No download client configured")
+
+    client = build_client(dc)
+    try:
+        job_id = await client.add_download(grab.nzb_url, grab.release_title, dc.category)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Download client error: {exc}") from exc
+
+    qi = QueueItem(
+        event_id=event_id,
+        release_title=grab.release_title,
+        release_size_bytes=grab.size_bytes,
+        indexer_name=grab.indexer_name,
+        nzb_url=grab.nzb_url,
+        download_client_id=dc.id,
+        sabnzbd_nzo_id=job_id,
+        status="grabbed",
+    )
+    session.add(qi)
+    await session.commit()
+
+    return {"status": "grabbed", "job_id": job_id, "download_client": dc.name}
+
+
+@router.get("/event/{event_id}/history")
+async def event_history(
+    event_id: int,
+    session: AsyncSession = Depends(get_session),
+) -> list[dict]:
+    """Return all QueueItems (history) for a single event."""
+    from app.models.queue_item import QueueItem
+
+    event = await session.get(Event, event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    result = await session.execute(
+        select(QueueItem)
+        .where(QueueItem.event_id == event_id)
+        .order_by(QueueItem.grabbed_at.desc())
+    )
+    items = list(result.scalars().all())
+    return [
+        {
+            "id": q.id,
+            "release_title": q.release_title,
+            "release_size_bytes": q.release_size_bytes,
+            "indexer_name": q.indexer_name,
+            "status": q.status,
+            "progress_percent": q.progress_percent,
+            "grabbed_at": q.grabbed_at.isoformat() if q.grabbed_at else None,
+            "completed_at": q.completed_at.isoformat() if q.completed_at else None,
+            "error_message": q.error_message,
+        }
+        for q in items
+    ]

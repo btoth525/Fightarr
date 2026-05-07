@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import Sidebar from "./components/Sidebar";
 import TopBar from "./components/TopBar";
 import EventsPage from "./pages/EventsPage";
+import EventDetailPage from "./pages/EventDetailPage";
 import CalendarPage from "./pages/CalendarPage";
 import ActivityPage from "./pages/ActivityPage";
 import WantedPage from "./pages/WantedPage";
@@ -19,6 +20,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Navigate to="/events" replace />} />
             <Route path="/events" element={<EventsPage />} />
+            <Route path="/events/:id" element={<EventDetailPage />} />
             <Route path="/calendar" element={<CalendarPage />} />
             <Route path="/activity" element={<ActivityPage />} />
             <Route path="/wanted" element={<WantedPage />} />

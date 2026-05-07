@@ -29,6 +29,7 @@ export interface Event {
   quality: string | null;
   poster_url: string | null;
   tmdb_id: number | null;
+  source_url: string | null;
 }
 
 export interface QueueItem {
@@ -57,6 +58,27 @@ export interface Indexer {
   enabled: boolean;
   priority: number;
   categories: string;
+}
+
+export interface SearchRelease {
+  title: string;
+  size_bytes: number | null;
+  indexer_name: string;
+  nzb_url: string;
+  pub_date: string | null;
+  guid: string | null;
+}
+
+export interface HistoryItem {
+  id: number;
+  release_title: string;
+  release_size_bytes: number | null;
+  indexer_name: string | null;
+  status: "grabbed" | "downloading" | "completed" | "failed" | "imported";
+  progress_percent: number;
+  grabbed_at: string;
+  completed_at: string | null;
+  error_message: string | null;
 }
 
 export interface AppSettings {
