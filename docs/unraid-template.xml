@@ -9,18 +9,22 @@
   <Privileged>false</Privileged>
   <Support>https://github.com/btoth525/Fightarr/issues</Support>
   <Project>https://github.com/btoth525/Fightarr</Project>
-  <Overview>UFC event manager for Usenet and Plex. Automatically searches, grabs, renames, and imports UFC fight cards — the Radarr for UFC that Radarr refuses to be.
+  <Overview>UFC event manager for Usenet and Plex. Automatically searches, grabs, renames, and imports UFC fight cards -- the Radarr for UFC that Radarr refuses to be.
 
-IMPORTANT — PATH SETUP (read before installing):
+IMPORTANT -- PATH SETUP (read before installing):
 
-For Fightarr to import completed downloads into your library, it MUST see the same paths as your download client (SABnzbd / NZBGet / qBittorrent) AND your media server (Plex / Jellyfin). The Servarr/TRaSH-Guides convention is a single /data mount that holds both downloads and media:
+Fightarr needs to see two things: where SABnzbd puts completed downloads, and where your Plex media library lives. The defaults below match the most common Unraid layout:
 
-  /mnt/user/data/usenet/complete/   ← SAB drops finished downloads here
-  /mnt/user/data/media/ufc/         ← Fightarr renames + hardlinks here, Plex reads here
+  /mnt/user/downloads  ->  /downloads   (SAB drops finished files here)
+  /mnt/user/Plex       ->  /plex        (your Plex library root)
 
-The default mount below maps your Unraid /mnt/user/data share into Fightarr as /data, matching the same convention you should use in SABnzbd, qBittorrent, and Plex/Jellyfin. This way hardlinks work (no double disk usage) and Fightarr can read whatever SAB writes.
+After install, go to Fightarr Settings -&gt; Media Management and set Root Folder to /plex/UFC Shows (adjust if your UFC subfolder inside Plex has a different name).
 
-After install, in Fightarr Settings → Media Management, set "Root Folder" to /data/media/ufc. In SABnzbd's category settings, set the "ufc" category folder to /data/usenet/complete/ufc.</Overview>
+In SABnzbd Settings -&gt; Categories, create a category named "ufc" and set its folder to the path inside /downloads where SAB puts that category (e.g. /downloads/complete/ufc). Fightarr picks up completed downloads from that path automatically.
+
+NOTE ON HARDLINKS: Hardlinks only work when /downloads and /plex live on the same Unraid array or pool. If they are on different shares/pools, open Fightarr Settings -&gt; Media Management and disable "Use Hardlinks" -- Fightarr will copy instead. The original file is deleted by SAB on its normal cleanup schedule.
+
+TRaSH-Guides /data layout: If you prefer a single unified mount, change the Downloads path to /mnt/user/data -&gt; /data, mirror that in SABnzbd and Plex, and set Root Folder to /data/media/ufc. See the Fightarr README Unraid section for the full walkthrough.</Overview>
   <Category>MediaApp:Video Tools:</Category>
   <WebUI>http://[IP]:[PORT:7879]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/btoth525/Fightarr/main/docs/unraid-template.xml</TemplateURL>
@@ -32,23 +36,83 @@ After install, in Fightarr Settings → Media Management, set "Root Folder" to /
   <DonateText/>
   <DonateLink/>
   <Requires/>
-  <Config Name="WebUI Port" Target="7878" Default="7879" Mode="tcp" Description="Web UI and API port. Use 7879 to avoid conflict with Radarr (which also uses 7878). Access Fightarr at http://[IP]:[PORT:7879]/" Type="Port" Display="always" Required="true" Mask="false">7879</Config>
-  <Config Name="Config" Target="/config" Default="/mnt/user/appdata/fightarr" Mode="rw" Description="Stores the SQLite database, indexer/client credentials, and the in-memory log buffer. NEVER share this with another container — it contains API keys." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/fightarr</Config>
-  <Config Name="Data" Target="/data" Default="/mnt/user/data" Mode="rw" Description="REQUIRED. Unified data share holding both your downloads and your media library. Mount the SAME host path in your download client (SABnzbd/NZBGet/qBittorrent) and in Plex/Jellyfin so hardlinks work and Fightarr can find what SAB downloads. Inside this share use /data/usenet/complete/ for SAB and /data/media/ufc/ for the library. If you already have separate /downloads and /media shares, see the optional Downloads/Media mounts below." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/data</Config>
-  <Config Name="Downloads (legacy / optional)" Target="/downloads" Default="" Mode="rw" Description="ONLY use this if your download client mounts /downloads separately instead of /data. The path here MUST match what SABnzbd sees as its complete-download folder. Leave blank if using the /data unified mount above." Type="Path" Display="advanced" Required="false" Mask="false"/>
-  <Config Name="Media (legacy / optional)" Target="/media" Default="" Mode="rw" Description="ONLY use this if your Plex/Jellyfin mounts /media separately instead of /data. Leave blank if using the /data unified mount above. If set, Fightarr's media root must be inside this path." Type="Path" Display="advanced" Required="false" Mask="false"/>
-  <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="Run-as user ID. 99 = nobody on Unraid. Must match the UID that owns /data so the importer can read SAB downloads and write to your media share." Type="Variable" Display="always" Required="true" Mask="false">99</Config>
-  <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="Run-as group ID. 100 = users on Unraid. Must match the GID that owns /data." Type="Variable" Display="always" Required="true" Mask="false">100</Config>
-  <Config Name="UMASK" Target="UMASK" Default="002" Mode="" Description="File permission mask for created files. 002 = group-writable, matches Radarr/Sonarr defaults so all your *arr containers produce compatible permissions." Type="Variable" Display="always" Required="false" Mask="false">002</Config>
-  <Config Name="TZ" Target="TZ" Default="America/New_York" Mode="" Description="Timezone (e.g. America/New_York, Europe/London). Affects scheduled-task timing and log timestamps." Type="Variable" Display="always" Required="true" Mask="false">America/New_York</Config>
-  <Config Name="Log Level" Target="FIGHTARR_LOG_LEVEL" Default="INFO" Mode="" Description="Logging verbosity: DEBUG, INFO, WARNING, ERROR. Set to DEBUG only when troubleshooting — produces a lot of output." Type="Variable" Display="always" Required="false" Mask="false">INFO</Config>
-  <Config Name="TMDB API Key" Target="FIGHTARR_TMDB_API_KEY" Default="" Mode="" Description="Optional. Enables higher-quality TMDB poster art. Poster art works out of the box via Wikipedia without this key." Type="Variable" Display="always" Required="false" Mask="true"/>
-  <Config Name="Plex Host" Target="FIGHTARR_PLEX_HOST" Default="" Mode="" Description="Optional. Plex server URL for library refresh after import, e.g. http://192.168.1.10:32400. Can also be configured in Fightarr Settings → Connect." Type="Variable" Display="advanced" Required="false" Mask="false"/>
-  <Config Name="Plex Token" Target="FIGHTARR_PLEX_TOKEN" Default="" Mode="" Description="Optional. Plex authentication token (X-Plex-Token)." Type="Variable" Display="advanced" Required="false" Mask="true"/>
-  <Config Name="Plex Section ID" Target="FIGHTARR_PLEX_SECTION_ID" Default="" Mode="" Description="Optional. Plex library section ID to refresh. Leave blank to refresh all sections." Type="Variable" Display="advanced" Required="false" Mask="false"/>
-  <Config Name="Jellyfin Host" Target="FIGHTARR_JELLYFIN_HOST" Default="" Mode="" Description="Optional. Jellyfin server URL for library refresh after import, e.g. http://192.168.1.10:8096" Type="Variable" Display="advanced" Required="false" Mask="false"/>
-  <Config Name="Jellyfin Token" Target="FIGHTARR_JELLYFIN_TOKEN" Default="" Mode="" Description="Optional. Jellyfin API key." Type="Variable" Display="advanced" Required="false" Mask="true"/>
-  <Config Name="CORS Origins" Target="FIGHTARR_CORS_ORIGINS" Default="*" Mode="" Description="Comma-separated allowed origins for CORS, or * to allow all. Default * is fine for LAN-only deployments. Tighten this if you reverse-proxy Fightarr to the public internet." Type="Variable" Display="advanced" Required="false" Mask="false">*</Config>
-  <Config Name="Schedule Refresh Interval" Target="FIGHTARR_SCHEDULE_REFRESH_INTERVAL" Default="21600" Mode="" Description="How often (seconds) to sync the UFC schedule from Wikipedia. Default: 21600 (6 hours)." Type="Variable" Display="advanced" Required="false" Mask="false">21600</Config>
-  <Config Name="Indexer Search Interval" Target="FIGHTARR_INDEXER_SEARCH_INTERVAL" Default="1800" Mode="" Description="How often (seconds) to RSS-search indexers for monitored missing events. Default: 1800 (30 minutes). Same default as Radarr." Type="Variable" Display="advanced" Required="false" Mask="false">1800</Config>
+
+  <!-- Port -->
+  <Config Name="WebUI Port" Target="7878" Default="7879" Mode="tcp"
+    Description="Web UI and API port. Default 7879 avoids conflict with Radarr (7878). Access Fightarr at http://[IP]:[PORT:7879]/"
+    Type="Port" Display="always" Required="true" Mask="false">7879</Config>
+
+  <!-- Paths -->
+  <Config Name="Config" Target="/config" Default="/mnt/user/appdata/fightarr" Mode="rw"
+    Description="Stores the SQLite database (fightarr.db), all settings, and API keys. Never share this folder with another container."
+    Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/fightarr</Config>
+
+  <Config Name="Downloads" Target="/downloads" Default="/mnt/user/downloads" Mode="rw"
+    Description="Where SABnzbd (or your other download client) saves completed downloads. Must be the same physical share that SAB writes to -- Fightarr reads completed files from here before moving them to Plex. Example: /mnt/user/downloads"
+    Type="Path" Display="always" Required="true" Mask="false">/mnt/user/downloads</Config>
+
+  <Config Name="Plex Media" Target="/plex" Default="/mnt/user/Plex" Mode="rw"
+    Description="Root of your Plex media share. Fightarr renames and moves imported UFC files into a subfolder here (e.g. /plex/UFC Shows). Must be the same physical share Plex reads from. Example: /mnt/user/Plex"
+    Type="Path" Display="always" Required="true" Mask="false">/mnt/user/Plex</Config>
+
+  <!-- Identity -->
+  <Config Name="PUID" Target="PUID" Default="99" Mode=""
+    Description="Run-as user ID. 99 = nobody on Unraid. Must match the owner UID of your Downloads and Plex shares so Fightarr can read and write files."
+    Type="Variable" Display="always" Required="true" Mask="false">99</Config>
+
+  <Config Name="PGID" Target="PGID" Default="100" Mode=""
+    Description="Run-as group ID. 100 = users on Unraid."
+    Type="Variable" Display="always" Required="true" Mask="false">100</Config>
+
+  <Config Name="UMASK" Target="UMASK" Default="002" Mode=""
+    Description="File permission mask. 002 = group-writable, matches Radarr/Sonarr defaults."
+    Type="Variable" Display="always" Required="false" Mask="false">002</Config>
+
+  <Config Name="TZ" Target="TZ" Default="America/New_York" Mode=""
+    Description="Timezone (e.g. America/New_York, America/Chicago, America/Los_Angeles, Europe/London). Affects scheduled task timing and log timestamps."
+    Type="Variable" Display="always" Required="true" Mask="false">America/New_York</Config>
+
+  <!-- Logging -->
+  <Config Name="Log Level" Target="FIGHTARR_LOG_LEVEL" Default="INFO" Mode=""
+    Description="Logging verbosity: DEBUG, INFO, WARNING, ERROR. Use DEBUG only when troubleshooting."
+    Type="Variable" Display="always" Required="false" Mask="false">INFO</Config>
+
+  <!-- Optional integrations -->
+  <Config Name="TMDB API Key" Target="FIGHTARR_TMDB_API_KEY" Default="" Mode=""
+    Description="Optional. Better poster art from TMDB. Poster art works automatically via Wikipedia without this key."
+    Type="Variable" Display="always" Required="false" Mask="true"/>
+
+  <Config Name="Plex Host" Target="FIGHTARR_PLEX_HOST" Default="" Mode=""
+    Description="Optional. Plex server URL for automatic library refresh after import. Example: http://192.168.1.10:32400. Can also be set in Fightarr Settings -&gt; Connect."
+    Type="Variable" Display="advanced" Required="false" Mask="false"/>
+
+  <Config Name="Plex Token" Target="FIGHTARR_PLEX_TOKEN" Default="" Mode=""
+    Description="Optional. Plex authentication token (X-Plex-Token). Find it in Plex Web: click your avatar -> Account -> find token in any API URL."
+    Type="Variable" Display="advanced" Required="false" Mask="true"/>
+
+  <Config Name="Plex Section ID" Target="FIGHTARR_PLEX_SECTION_ID" Default="" Mode=""
+    Description="Optional. Plex library section ID to refresh after import. Leave blank to refresh all sections. Find the ID in Plex Web under your library URL."
+    Type="Variable" Display="advanced" Required="false" Mask="false"/>
+
+  <Config Name="Jellyfin Host" Target="FIGHTARR_JELLYFIN_HOST" Default="" Mode=""
+    Description="Optional. Jellyfin server URL for library refresh after import. Example: http://192.168.1.10:8096"
+    Type="Variable" Display="advanced" Required="false" Mask="false"/>
+
+  <Config Name="Jellyfin Token" Target="FIGHTARR_JELLYFIN_TOKEN" Default="" Mode=""
+    Description="Optional. Jellyfin API key."
+    Type="Variable" Display="advanced" Required="false" Mask="true"/>
+
+  <!-- Advanced -->
+  <Config Name="CORS Origins" Target="FIGHTARR_CORS_ORIGINS" Default="*" Mode=""
+    Description="Comma-separated allowed CORS origins, or * to allow all. * is fine for LAN-only. Tighten if reverse-proxying to the internet."
+    Type="Variable" Display="advanced" Required="false" Mask="false">*</Config>
+
+  <Config Name="Schedule Refresh Interval" Target="FIGHTARR_SCHEDULE_REFRESH_INTERVAL" Default="21600" Mode=""
+    Description="How often (seconds) to sync the UFC schedule from Wikipedia. Default: 21600 (6 hours)."
+    Type="Variable" Display="advanced" Required="false" Mask="false">21600</Config>
+
+  <Config Name="Indexer Search Interval" Target="FIGHTARR_INDEXER_SEARCH_INTERVAL" Default="1800" Mode=""
+    Description="How often (seconds) to RSS-search indexers for monitored missing events. Default: 1800 (30 minutes)."
+    Type="Variable" Display="advanced" Required="false" Mask="false">1800</Config>
+
 </Container>

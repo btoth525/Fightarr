@@ -232,43 +232,62 @@ You don't need post-processing scripts. Fightarr handles renaming, poster art, a
 
 ## Unraid
 
-Fightarr is built to live in your Unraid tower alongside Radarr, Sonarr, and SABnzbd. The single most important thing to get right is **path mapping**: Fightarr can only import a completed download if it can read the folder SAB writes to.
+Fightarr is built to live in your Unraid tower alongside Radarr, Sonarr, and SABnzbd. The single most important thing to get right is **path mapping**: Fightarr can only import a completed download if it can see the folder SAB writes to **and** the Plex share it writes into.
 
-The cleanest solution (and what Radarr/Sonarr's [TRaSH-Guides](https://trash-guides.info/Hardlinks/How-to-setup-for/Unraid/) recommend) is one unified `/data` mount across every container:
+### Standard layout (separate `/downloads` + `/Plex` shares)
+
+This is the most common Unraid setup — downloads on one share, media on another:
 
 ```yaml
-# Fightarr (this template)
-/mnt/user/appdata/fightarr   →   /config   (SQLite database, never share)
-/mnt/user/data               →   /data     (downloads + media, single mount)
+# Fightarr
+/mnt/user/appdata/fightarr   →  /config       (SQLite database — never share)
+/mnt/user/downloads          →  /downloads    (SAB drops finished files here)
+/mnt/user/Plex               →  /plex         (Plex library root)
 
-# SABnzbd (must use the SAME host path)
-/mnt/user/data               →   /data
+# SABnzbd  (must see the same download share)
+/mnt/user/downloads          →  /downloads
+  → SAB category "ufc" folder = /downloads/complete/ufc
+
+# Plex  (must see the same media share)
+/mnt/user/Plex               →  /Plex
+  → Library path = /Plex/UFC Shows
+```
+
+After install, in Fightarr **Settings → Media Management**, set **Root Folder** to `/plex/UFC Shows`.
+
+In **SABnzbd Settings → Categories**, set the `ufc` category folder to wherever inside `/downloads/` SAB puts that category (e.g. `/downloads/complete/ufc`).
+
+> **Hardlinks note:** Hardlinks only work when the source and destination are on the same filesystem (same Unraid array/pool). If your `/downloads` share and `/Plex` share are on different arrays or pools, open Fightarr **Settings → Media Management** and turn off **Use Hardlinks** — Fightarr will copy instead. The copy is transparent and the original is cleaned up by SAB on its normal schedule.
+
+### TRaSH-Guides `/data` layout (single unified mount)
+
+If you prefer the Servarr-recommended single-mount approach and all your containers use `/data`:
+
+```yaml
+# Fightarr
+/mnt/user/data               →  /data
+
+# SABnzbd
+/mnt/user/data               →  /data
   → SAB category "ufc" folder = /data/usenet/complete/ufc
 
-# Plex / Jellyfin (must use the SAME host path)
-/mnt/user/data               →   /data
-  → Library = /data/media/ufc
+# Plex
+/mnt/user/data               →  /data
+  → Library path = /data/media/ufc
 ```
 
-With this layout:
-- SAB drops a finished download in `/data/usenet/complete/ufc/UFC.300.../` — Fightarr sees that exact path
-- Fightarr hardlinks the file into `/data/media/ufc/UFC 300 - Pereira vs Hill (2024)/` — Plex sees that exact path
-- **Hardlinks work** because both folders live on the same filesystem, so the move costs zero extra disk space and your NZB stays seedable
+Set Root Folder to `/data/media/ufc`. Hardlinks always work here because everything is under one share.
 
-Then in Fightarr Settings → Media Management, set **Root Folder** to `/data/media/ufc`.
+### If SAB and Fightarr report different paths
 
-### If your paths are already different
-
-If Radarr or Sonarr already work for you with `/downloads` and `/media` mounts, you can use the same layout — Fightarr's Unraid template has optional legacy fields for it.
-
-If your download client is on a different machine (or in a container that can't share `/data`), add a **Remote Path Mapping** in Fightarr Settings → Download Clients → Remote Path Mappings:
+Add a **Remote Path Mapping** in Fightarr **Settings → Download Clients → Remote Path Mappings**:
 
 ```
-Remote (SAB sees):   /downloads/complete/ufc
-Local (Fightarr):    /data/usenet/complete/ufc
+Remote (SAB reports):   /downloads/complete/ufc
+Local  (Fightarr sees): /downloads/complete/ufc
 ```
 
-Fightarr will translate the path returned by SAB into one it can actually read before importing. Same feature as Radarr's, same UI position.
+This is the same feature as Radarr's Remote Path Mappings — Fightarr translates the path SAB returns before looking for files.
 
 ### Container settings
 
