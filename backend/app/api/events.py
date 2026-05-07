@@ -3,15 +3,18 @@
 This is the rough equivalent of Radarr's /movie endpoints.
 """
 
+import logging
 from datetime import date, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
 from app.models.event import Event, EventStatus, EventType
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -50,6 +53,7 @@ class GrabRequest(BaseModel):
     release_title: str
     size_bytes: int | None = None
     indexer_name: str | None = None
+    protocol: str = "nzb"  # "nzb" → SAB/NZBGet, "torrent" → qBit/Deluge/Transmission/RD
 
 
 # --- Routes ----------------------------------------------------------------
@@ -82,16 +86,44 @@ async def get_event(event_id: int, session: AsyncSession = Depends(get_session))
 async def update_event(
     event_id: int,
     update: EventUpdate,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
 ) -> Event:
     event = await session.get(Event, event_id)
     if event is None:
         raise HTTPException(status_code=404, detail="Event not found")
+
+    was_monitored = event.monitored
     if update.monitored is not None:
         event.monitored = update.monitored
     await session.commit()
     await session.refresh(event)
+
+    # Radarr "Search on Monitor" behavior — when the user turns monitor ON for
+    # an event that has already aired and we don't have a file yet, kick off
+    # an auto-search-and-grab in the background. The HTTP response returns
+    # immediately so the UI stays snappy.
+    if (
+        update.monitored is True
+        and not was_monitored
+        and event.file_path is None
+        and event.event_date is not None
+        and event.event_date <= date.today()
+    ):
+        logger.info("Monitor enabled for event %d — triggering auto-search", event_id)
+        background_tasks.add_task(_run_auto_search, event_id)
+
     return event
+
+
+async def _run_auto_search(event_id: int) -> None:
+    """Wrapper so background_tasks can call our async grab_service."""
+    from app.services.grab_service import auto_search_and_grab
+
+    try:
+        await auto_search_and_grab(event_id)
+    except Exception as exc:
+        logger.error("Auto-search task crashed for event %d: %s", event_id, exc)
 
 
 @router.get("/calendar", response_model=list[EventOut])
@@ -235,44 +267,85 @@ async def grab_event(
     grab: GrabRequest,
     session: AsyncSession = Depends(get_session),
 ) -> dict:
-    """Push a release to the best available download client and create a QueueItem."""
-    from app.models.download_client import DownloadClient
-    from app.models.queue_item import QueueItem
-    from app.services.download_clients.factory import build_client
+    """Push a release to a matching download client and create a QueueItem."""
+    from app.services.grab_service import (
+        AlreadyQueuedError,
+        NoClientError,
+        grab_release,
+    )
 
     event = await session.get(Event, event_id)
     if event is None:
         raise HTTPException(status_code=404, detail="Event not found")
 
-    result = await session.execute(
-        select(DownloadClient)
-        .where(DownloadClient.enabled.is_(True))
-        .order_by(DownloadClient.priority)
-    )
-    dc = result.scalar_one_or_none()
-    if dc is None:
-        raise HTTPException(status_code=400, detail="No download client configured")
-
-    client = build_client(dc)
     try:
-        job_id = await client.add_download(grab.nzb_url, grab.release_title, dc.category)
+        return await grab_release(
+            event_id=event_id,
+            nzb_url=grab.nzb_url,
+            release_title=grab.release_title,
+            size_bytes=grab.size_bytes,
+            indexer_name=grab.indexer_name,
+            protocol=grab.protocol,
+        )
+    except AlreadyQueuedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except NoClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Download client error: {exc}") from exc
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    qi = QueueItem(
-        event_id=event_id,
-        release_title=grab.release_title,
-        release_size_bytes=grab.size_bytes,
-        indexer_name=grab.indexer_name,
-        nzb_url=grab.nzb_url,
-        download_client_id=dc.id,
-        sabnzbd_nzo_id=job_id,
-        status="grabbed",
+
+@router.post("/event/{event_id}/auto-search")
+async def trigger_auto_search(event_id: int) -> dict:
+    """Manually trigger the same auto-search-and-grab loop that fires on monitor.
+
+    Useful when the user wants to retry after fixing indexer/client config.
+    Runs synchronously and returns the grab result so the UI can show feedback.
+    """
+    from app.services.grab_service import auto_search_and_grab
+
+    result = await auto_search_and_grab(event_id)
+    if result is None:
+        return {"status": "no-grab", "reason": "No qualifying release found"}
+    return result
+
+
+# Bulk monitor + auto-search trigger — Radarr equivalent of "Mass Editor"
+class BulkMonitorRequest(BaseModel):
+    event_ids: list[int]
+    monitored: bool = True
+    search: bool = True
+
+
+@router.post("/command/bulk-monitor")
+async def bulk_monitor(
+    body: BulkMonitorRequest,
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Set monitored=true/false on many events at once. Optionally auto-search."""
+    if not body.event_ids:
+        return {"status": "ok", "updated": 0, "searches_queued": 0}
+
+    await session.execute(
+        update(Event).where(Event.id.in_(body.event_ids)).values(monitored=body.monitored)
     )
-    session.add(qi)
     await session.commit()
 
-    return {"status": "grabbed", "job_id": job_id, "download_client": dc.name}
+    searches = 0
+    if body.monitored and body.search:
+        # Only auto-search past/aired events with no file
+        result = await session.execute(
+            select(Event)
+            .where(Event.id.in_(body.event_ids))
+            .where(Event.file_path.is_(None))
+            .where(Event.event_date <= date.today())
+        )
+        for ev in result.scalars().all():
+            background_tasks.add_task(_run_auto_search, ev.id)
+            searches += 1
+
+    return {"status": "ok", "updated": len(body.event_ids), "searches_queued": searches}
 
 
 @router.get("/event/{event_id}/history")

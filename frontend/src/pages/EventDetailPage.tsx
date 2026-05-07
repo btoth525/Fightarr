@@ -105,6 +105,7 @@ export default function EventDetailPage() {
         release_title: release.title,
         size_bytes: release.size_bytes,
         indexer_name: release.indexer_name,
+        protocol: release.protocol,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["event", eventId] });
