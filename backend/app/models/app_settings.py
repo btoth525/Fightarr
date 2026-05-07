@@ -13,7 +13,7 @@ class AppSettings(Base):
 
     # Media library
     media_root: Mapped[str] = mapped_column(String(500), default="/media")
-    use_hardlinks: Mapped[bool] = mapped_column(Boolean, default=True)
+    use_hardlinks: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # TMDB (optional)
     tmdb_api_key: Mapped[str] = mapped_column(String(200), default="")

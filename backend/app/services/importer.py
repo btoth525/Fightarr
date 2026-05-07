@@ -106,6 +106,10 @@ async def import_download(session: AsyncSession, item: QueueItem) -> None:
     folder_name = _build_event_folder_name(event)
     dest_dir = media_root / folder_name
     dest_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(dest_dir, 0o775)
+    except OSError:
+        pass
 
     dest_file = dest_dir / _build_filename(folder_name, quality, video_file.suffix)
     _move_file(video_file, dest_file, use_hardlinks=db_settings.use_hardlinks)
@@ -211,15 +215,29 @@ def _build_filename(folder_name: str, quality: str, ext: str) -> str:
 
 
 def _move_file(src: Path, dest: Path, *, use_hardlinks: bool) -> None:
+    """Move (or hardlink) src → dest.
+
+    use_hardlinks=True  → os.link() so the original stays seedable; falls back
+                          to shutil.move() on cross-device error.
+    use_hardlinks=False → shutil.move(): rename on same filesystem (instant,
+                          zero extra disk space), copy+delete across devices.
+    Either way, dest replaces any existing file and permissions are fixed to
+    0o664 (rw-rw-r--) so Plex / Jellyfin can read it and *arr processes can
+    overwrite it — matches Unraid nobody:users + UMASK 002 convention.
+    """
     if dest.exists():
         dest.unlink()
     if use_hardlinks:
         try:
             os.link(src, dest)
-            return
         except OSError:
-            pass  # Cross-device link — fall through to copy
-    shutil.copy2(src, dest)
+            shutil.move(str(src), dest)
+    else:
+        shutil.move(str(src), dest)
+    try:
+        os.chmod(dest, 0o664)
+    except OSError:
+        pass
 
 
 async def _save_poster(event: Event, dest_dir: Path) -> None:

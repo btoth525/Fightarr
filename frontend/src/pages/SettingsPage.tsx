@@ -247,7 +247,9 @@ function MediaSection({ settings }: { settings: AppSettings }) {
           <div>
             <div className="text-sm text-text-bright">Use Hardlinks</div>
             <div className="text-xs text-text-muted mt-0.5">
-              Hardlink instead of copying — preserves download seeding
+              {hardlinks
+                ? "Hardlink — original stays in downloads (keeps NZB seedable)"
+                : "Move — file is moved out of downloads into your library (default)"}
             </div>
           </div>
           <button

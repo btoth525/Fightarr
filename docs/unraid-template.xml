@@ -22,7 +22,7 @@ After install, go to Fightarr Settings -&gt; Media Management and set Root Folde
 
 In SABnzbd Settings -&gt; Categories, create a category named "ufc" and set its folder to the path inside /downloads where SAB puts that category (e.g. /downloads/complete/ufc). Fightarr picks up completed downloads from that path automatically.
 
-NOTE ON HARDLINKS: Hardlinks only work when /downloads and /plex live on the same Unraid array or pool. If they are on different shares/pools, open Fightarr Settings -&gt; Media Management and disable "Use Hardlinks" -- Fightarr will copy instead. The original file is deleted by SAB on its normal cleanup schedule.
+By default Fightarr MOVES the file out of /downloads into /plex (instant rename on the same filesystem, zero extra disk space). If you want to keep the original in downloads for seeding, enable "Use Hardlinks" in Fightarr Settings -&gt; Media Management -- hardlinks only work when /downloads and /plex are on the same Unraid array/pool. Permissions are set automatically (0775 folder, 0664 file) to match Unraid nobody:users + UMASK 002.
 
 TRaSH-Guides /data layout: If you prefer a single unified mount, change the Downloads path to /mnt/user/data -&gt; /data, mirror that in SABnzbd and Plex, and set Root Folder to /data/media/ufc. See the Fightarr README Unraid section for the full walkthrough.</Overview>
   <Category>MediaApp:Video Tools:</Category>

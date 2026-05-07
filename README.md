@@ -182,7 +182,7 @@ When a download completes, Fightarr renames and organizes files exactly the way 
 - **Folder format**: `{Title} ({Year})` — Radarr-compatible, Plex Movie agent picks it up automatically
 - **Filename format**: `{Folder} {Quality}.{ext}` with full quality profile (`WEBDL-1080p`, `Bluray-2160p`, `WEBRip-720p`, `HDTV-720p`)
 - **Poster art**: `poster.jpg` is downloaded into each event folder — Plex's Local Media Assets agent uses it as the cover even without a TMDB match
-- **Hardlinks-first**: imports use `os.link()` so the original NZB stays seedable; falls back to copy across filesystems
+- **Move by default**: imports use `shutil.move()` — instant rename on the same filesystem, copy+delete across devices; enable **Use Hardlinks** in Settings if you want to keep the original seedable
 - **Sample skipping**: anything under 100 MB or with "sample" in the name is ignored
 
 ### SAB / NZBGet category setup
@@ -257,7 +257,7 @@ After install, in Fightarr **Settings → Media Management**, set **Root Folder*
 
 In **SABnzbd Settings → Categories**, set the `ufc` category folder to wherever inside `/downloads/` SAB puts that category (e.g. `/downloads/complete/ufc`).
 
-> **Hardlinks note:** Hardlinks only work when the source and destination are on the same filesystem (same Unraid array/pool). If your `/downloads` share and `/Plex` share are on different arrays or pools, open Fightarr **Settings → Media Management** and turn off **Use Hardlinks** — Fightarr will copy instead. The copy is transparent and the original is cleaned up by SAB on its normal schedule.
+> **Move vs Hardlink:** By default Fightarr **moves** the file — an instant rename on the same filesystem, zero extra disk space, and the file disappears from your downloads folder as expected. Enable **Use Hardlinks** in Settings → Media Management only if you want the original to stay in downloads for seeding; hardlinks require `/downloads` and `/Plex` to be on the same Unraid array/pool. Either way, Fightarr sets correct permissions automatically (`0775` folder, `0664` file) matching `nobody:users` + `UMASK=002`.
 
 ### TRaSH-Guides `/data` layout (single unified mount)
 

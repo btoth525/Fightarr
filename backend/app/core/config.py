@@ -20,7 +20,7 @@ class Settings(BaseSettings):
 
     # Media library
     media_root: str = "./media"
-    use_hardlinks: bool = True
+    use_hardlinks: bool = False
 
     # Logging
     log_level: str = "INFO"
