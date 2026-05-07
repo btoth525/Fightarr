@@ -76,6 +76,31 @@ class RealDebridClient:
             for t in torrents
         ]
 
+    async def get_history(self, job_id: str) -> dict | None:
+        """Check Real-Debrid torrent info for a specific job_id."""
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                r = await client.get(
+                    f"{_RD_BASE}/torrents/info/{job_id}", headers=self._auth()
+                )
+                if r.status_code == 404:
+                    return None
+                r.raise_for_status()
+                t = r.json()
+            status = _rd_status(t.get("status", ""))
+            if status not in ("completed", "failed"):
+                return None
+            return {
+                "id": job_id,
+                "name": t.get("filename", job_id),
+                "status": status,
+                "progress": float(t.get("progress", 100)),
+                "size_bytes": t.get("bytes", 0),
+                "download_path": None,  # RD doesn't expose a local path
+            }
+        except Exception:
+            return None
+
     async def test_connection(self) -> bool:
         try:
             async with httpx.AsyncClient(timeout=8.0) as client:

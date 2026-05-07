@@ -55,21 +55,25 @@ class QBittorrentClient:
             await self._login(client)
             r = await client.get(
                 f"{self.host}/api/v2/torrents/info",
-                params={"category": self.category},
+                params={"category": self.category, "filter": "all"},
             )
             r.raise_for_status()
             torrents = r.json()
 
-        return [
-            {
+        result = []
+        for t in torrents:
+            status = _qbit_status(t["state"])
+            entry: dict = {
                 "id": t["hash"],
                 "name": t["name"],
-                "status": _qbit_status(t["state"]),
+                "status": status,
                 "progress": round(t.get("progress", 0) * 100, 1),
                 "size_bytes": t.get("size", 0),
             }
-            for t in torrents
-        ]
+            if status == "completed" and t.get("save_path"):
+                entry["download_path"] = t["save_path"]
+            result.append(entry)
+        return result
 
     async def test_connection(self) -> bool:
         try:

@@ -75,6 +75,31 @@ class NZBGetClient:
             for g in (groups or [])
         ]
 
+    async def get_history(self, job_id: str) -> dict | None:
+        """Check NZBGet history for a completed/failed job by NZBID."""
+        history = await self._rpc("history", [False])
+        for item in history or []:
+            if str(item.get("NZBID")) == str(job_id):
+                raw_status = item.get("Status", "").upper()
+                if raw_status.startswith("SUCCESS"):
+                    status = "completed"
+                elif raw_status.startswith(("FAILURE", "DELETED")):
+                    status = "failed"
+                else:
+                    continue
+                messages = item.get("MessageList", [])
+                err = messages[-1].get("Text") if messages and status == "failed" else None
+                return {
+                    "id": job_id,
+                    "name": item.get("NZBName", ""),
+                    "status": status,
+                    "progress": 100.0,
+                    "size_bytes": item.get("FileSizeMB", 0) * 1024 * 1024,
+                    "download_path": item.get("DestDir"),
+                    "error": err,
+                }
+        return None
+
     async def test_connection(self) -> bool:
         try:
             await self._rpc("version", [])

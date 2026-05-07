@@ -36,10 +36,13 @@ export interface Event {
 export interface QueueItem {
   id: number;
   event_id: number;
+  event_title: string | null;
+  event_date: string | null;
   release_title: string;
   release_size_bytes: number | null;
   indexer_name: string | null;
   download_client_id: number | null;
+  download_client_name: string | null;
   status: "grabbed" | "downloading" | "completed" | "failed" | "imported";
   progress_percent: number;
   error_message: string | null;

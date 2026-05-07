@@ -72,6 +72,35 @@ class SABnzbdClient:
             for s in slots
         ]
 
+    async def get_history(self, job_id: str) -> dict | None:
+        """Check SABnzbd history for a completed/failed job by nzo_id."""
+        params = {
+            "output": "json",
+            "apikey": self.api_key,
+            "mode": "history",
+            "start": 0,
+            "limit": 200,
+        }
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            r = await client.get(f"{self.host}/api", params=params)
+            r.raise_for_status()
+            data = r.json()
+
+        for slot in data.get("history", {}).get("slots", []):
+            if slot.get("nzo_id") == job_id:
+                raw_status = slot.get("status", "").lower()
+                status = "completed" if raw_status == "completed" else "failed"
+                return {
+                    "id": job_id,
+                    "name": slot.get("name", ""),
+                    "status": status,
+                    "progress": 100.0,
+                    "size_bytes": slot.get("bytes", 0),
+                    "download_path": slot.get("storage"),
+                    "error": slot.get("fail_message") if status == "failed" else None,
+                }
+        return None
+
     async def test_connection(self) -> bool:
         try:
             params = {"output": "json", "apikey": self.api_key, "mode": "version"}

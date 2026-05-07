@@ -73,19 +73,23 @@ class DelugeClient:
             result = await self._rpc(
                 client,
                 "core.get_torrents_status",
-                [{}, ["name", "state", "progress", "total_size"]],
+                [{}, ["name", "state", "progress", "total_size", "save_path"]],
             )
 
-        return [
-            {
+        entries = []
+        for torrent_id, info in (result or {}).items():
+            status = _STATE_MAP.get(info.get("state", ""), "downloading")
+            entry: dict = {
                 "id": torrent_id,
                 "name": info.get("name", torrent_id),
-                "status": _STATE_MAP.get(info.get("state", ""), "downloading"),
+                "status": status,
                 "progress": round(info.get("progress", 0), 1),
                 "size_bytes": info.get("total_size", 0),
             }
-            for torrent_id, info in (result or {}).items()
-        ]
+            if status == "completed" and info.get("save_path"):
+                entry["download_path"] = info["save_path"]
+            entries.append(entry)
+        return entries
 
     async def test_connection(self) -> bool:
         try:

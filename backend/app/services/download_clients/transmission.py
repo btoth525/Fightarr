@@ -66,18 +66,27 @@ class TransmissionClient:
     async def get_queue(self) -> list[dict]:
         result = await self._rpc(
             "torrent-get",
-            {"fields": ["id", "name", "status", "percentDone", "totalSize", "hashString"]},
-        )
-        return [
             {
+                "fields": [
+                    "id", "name", "status", "percentDone",
+                    "totalSize", "hashString", "downloadDir",
+                ]
+            },
+        )
+        entries = []
+        for t in result.get("torrents", []):
+            status = _STATUS_MAP.get(t["status"], "downloading")
+            entry: dict = {
                 "id": t["hashString"],
                 "name": t["name"],
-                "status": _STATUS_MAP.get(t["status"], "downloading"),
+                "status": status,
                 "progress": round(t.get("percentDone", 0) * 100, 1),
                 "size_bytes": t.get("totalSize", 0),
             }
-            for t in result.get("torrents", [])
-        ]
+            if status == "completed" and t.get("downloadDir"):
+                entry["download_path"] = t["downloadDir"]
+            entries.append(entry)
+        return entries
 
     async def test_connection(self) -> bool:
         try:

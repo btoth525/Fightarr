@@ -27,6 +27,7 @@ def start_scheduler() -> None:
 
     # Lazy imports so this module stays import-cheap
     from app.services.indexer_search import search_all_wanted
+    from app.services.queue_monitor import poll_queue
     from app.services.schedule_sync import sync_schedule
 
     _scheduler.add_job(
@@ -43,6 +44,15 @@ def start_scheduler() -> None:
         trigger=IntervalTrigger(seconds=settings.indexer_search_interval),
         id="indexer_search",
         name="Search indexers for wanted events",
+        replace_existing=True,
+        next_run_time=None,
+    )
+
+    _scheduler.add_job(
+        poll_queue,
+        trigger=IntervalTrigger(seconds=60),
+        id="queue_monitor",
+        name="Poll download clients for queue updates",
         replace_existing=True,
         next_run_time=None,
     )
