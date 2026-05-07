@@ -301,12 +301,21 @@ function IndexersSection() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["indexers"] });
       setShowAdd(false);
+      toast.success("Indexer added");
     },
+    onError: (err: unknown) =>
+      toast.error("Failed to add indexer", {
+        description: err instanceof Error ? err.message : "Unknown error",
+      }),
   });
 
   const deleteIndexer = useMutation({
     mutationFn: (id: number) => api.delete(`/indexer/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["indexers"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["indexers"] });
+      toast.success("Indexer removed");
+    },
+    onError: () => toast.error("Failed to remove indexer"),
   });
 
   const updatePriority = useMutation({
@@ -316,6 +325,10 @@ function IndexersSection() {
         priority: newPriority,
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["indexers"] }),
+    onError: () => {
+      qc.invalidateQueries({ queryKey: ["indexers"] });
+      toast.error("Priority update failed — list refreshed");
+    },
   });
 
   const sorted = [...indexers].sort((a, b) => a.priority - b.priority);
@@ -544,18 +557,31 @@ function DownloadClientsSection() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["downloadclients"] });
       setShowAdd(false);
+      toast.success("Download client added");
     },
+    onError: (err: unknown) =>
+      toast.error("Failed to add download client", {
+        description: err instanceof Error ? err.message : "Unknown error",
+      }),
   });
 
   const deleteClient = useMutation({
     mutationFn: (id: number) => api.delete(`/downloadclient/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["downloadclients"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["downloadclients"] });
+      toast.success("Download client removed");
+    },
+    onError: () => toast.error("Failed to remove download client"),
   });
 
   const updatePriority = useMutation({
     mutationFn: ({ dc, newPriority }: { dc: DownloadClient; newPriority: number }) =>
       api.put<DownloadClient>(`/downloadclient/${dc.id}`, { ...dc, priority: newPriority }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["downloadclients"] }),
+    onError: () => {
+      qc.invalidateQueries({ queryKey: ["downloadclients"] });
+      toast.error("Priority update failed — list refreshed");
+    },
   });
 
   const sortedClients = [...clients].sort((a, b) => a.priority - b.priority);

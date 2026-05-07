@@ -136,6 +136,12 @@ export default function EventDetailPage() {
       setSearchErrors(data.errors ?? []);
       setQueriesTried(data.queries_tried ?? []);
     },
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : "Search failed";
+      setSearchResults([]);
+      setSearchErrors([msg]);
+      toast.error("Search failed", { description: msg });
+    },
   });
 
   const grab = useMutation({

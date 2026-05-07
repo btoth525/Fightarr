@@ -135,6 +135,13 @@ def _find_video_file(download_path: str | None) -> Path | None:
     if not root.exists():
         return None
     if root.is_file() and root.suffix.lower() in VIDEO_EXTS:
+        if SAMPLE_RE.search(root.name):
+            return None
+        try:
+            if root.stat().st_size < MIN_FILE_BYTES:
+                return None
+        except OSError:
+            return None
         return root
 
     candidates: list[Path] = []

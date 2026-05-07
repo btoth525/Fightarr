@@ -100,7 +100,10 @@ async def _merge_events(scraped: list[ScrapedEvent]) -> int:
     logger.info("Merged %d events into the database", count)
 
     # Fire-and-forget TMDB poster fetch for any events still missing art
-    asyncio.create_task(_backfill_posters())  # noqa: RUF006
+    _task = asyncio.create_task(_backfill_posters())
+    _task.add_done_callback(
+        lambda t: t.exception() and logger.warning("Poster backfill error: %s", t.exception())
+    )
 
     return count
 

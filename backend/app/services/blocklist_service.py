@@ -23,9 +23,10 @@ async def add(
 ) -> None:
     """Add a release to the blocklist (idempotent on title)."""
     async with AsyncSessionLocal() as session:
-        existing = await session.execute(
-            select(BlocklistEntry).where(BlocklistEntry.release_title == release_title)
-        )
+        q = select(BlocklistEntry).where(BlocklistEntry.release_title == release_title)
+        if event_id is not None:
+            q = q.where(BlocklistEntry.event_id == event_id)
+        existing = await session.execute(q)
         if existing.scalar_one_or_none() is not None:
             return
 

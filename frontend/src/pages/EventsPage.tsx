@@ -28,6 +28,7 @@ export default function EventsPage() {
     onSuccess: (updated) => {
       queryClient.invalidateQueries({ queryKey: ["events"] });
       queryClient.invalidateQueries({ queryKey: ["wanted"] });
+      queryClient.invalidateQueries({ queryKey: ["event", updated.id] });
       if (updated.monitored && !updated.file_path) {
         toast.success(`Monitoring ${updated.title}`, {
           description: "Searching indexers in background…",

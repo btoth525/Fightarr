@@ -90,18 +90,30 @@ export default function ActivityPage() {
     refetchInterval: tab === "history" ? 15_000 : false,
   });
 
+  // Always fetch blocklist so the count badge shows immediately without clicking the tab
   const { data: blocklist = [], isLoading: bLoading } = useQuery({
     queryKey: ["blocklist"],
     queryFn: () => api.get<BlocklistEntry[]>("/blocklist"),
-    enabled: tab === "blocklist",
+    refetchInterval: 60_000,
   });
 
-  const removeItem = useMutation({
+  const removeQueueItem = useMutation({
     mutationFn: (id: number) => api.delete(`/queue/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["queue"] });
       queryClient.invalidateQueries({ queryKey: ["history"] });
+      toast.success("Removed from queue");
     },
+    onError: () => toast.error("Failed to remove item"),
+  });
+
+  const removeHistoryItem = useMutation({
+    mutationFn: (id: number) => api.delete(`/queue/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["history"] });
+      toast.success("History entry deleted");
+    },
+    onError: () => toast.error("Failed to delete history entry"),
   });
 
   const removeBlock = useMutation({
@@ -174,7 +186,7 @@ export default function ActivityPage() {
                     key={item.id}
                     item={item}
                     onGoToEvent={() => navigate(`/events/${item.event_id}`)}
-                    onRemove={() => removeItem.mutate(item.id)}
+                    onRemove={() => removeQueueItem.mutate(item.id)}
                   />
                 ))}
               </div>
@@ -202,7 +214,11 @@ export default function ActivityPage() {
                     key={item.id}
                     item={item}
                     onGoToEvent={() => navigate(`/events/${item.event_id}`)}
-                    onRemove={() => removeItem.mutate(item.id)}
+                    onRemove={() => {
+                      if (confirm("Delete this history entry? This cannot be undone.")) {
+                        removeHistoryItem.mutate(item.id);
+                      }
+                    }}
                   />
                 ))}
               </div>
