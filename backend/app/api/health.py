@@ -1,6 +1,6 @@
 """Health and system status endpoints."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException
 
@@ -36,11 +36,13 @@ async def system_tasks() -> list[dict]:
     jobs = []
     for job in scheduler.get_jobs():
         next_run = job.next_run_time
-        jobs.append({
-            "id": job.id,
-            "name": job.name,
-            "next_run_time": next_run.isoformat() if next_run else None,
-        })
+        jobs.append(
+            {
+                "id": job.id,
+                "name": job.name,
+                "next_run_time": next_run.isoformat() if next_run else None,
+            }
+        )
     return jobs
 
 
@@ -57,5 +59,17 @@ async def run_task_now(job_id: str) -> dict:
     if job is None:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
 
-    scheduler.modify_job(job_id, next_run_time=datetime.now(tz=timezone.utc))
+    scheduler.modify_job(job_id, next_run_time=datetime.now(tz=UTC))
     return {"status": "triggered", "job_id": job_id}
+
+
+@router.get("/system/health")
+async def system_health() -> dict:
+    """Return the latest indexer + download client health status.
+
+    Cached from the most recent health_check task run. Use POST .../run-now on
+    the 'health_check' task to refresh immediately.
+    """
+    from app.services.maintenance import get_last_health
+
+    return get_last_health()

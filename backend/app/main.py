@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 async def _startup_sync() -> None:
     """Run an initial schedule sync in the background so the DB isn't empty on first boot."""
     from app.services.schedule_sync import sync_schedule
+
     try:
         count = await sync_schedule()
         logger.info("Startup sync complete: %d events", count)

@@ -127,7 +127,9 @@ class JellyfinIn(BaseModel):
 
 
 @router.put("/settings/connect/jellyfin", response_model=SettingsOut)
-async def update_jellyfin(body: JellyfinIn, session: AsyncSession = Depends(get_session)) -> SettingsOut:
+async def update_jellyfin(
+    body: JellyfinIn, session: AsyncSession = Depends(get_session)
+) -> SettingsOut:
     r = await _row(session)
     r.jellyfin_host = body.jellyfin_host
     if body.jellyfin_token != SENTINEL:

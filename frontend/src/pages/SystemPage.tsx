@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Play, Download } from "lucide-react";
+import { Play, Download, AlertTriangle, CheckCircle2 } from "lucide-react";
 
 import { api } from "../api/client";
 import type { ScheduledTask } from "../api/types";
@@ -9,6 +9,19 @@ interface SystemStatus {
   appName: string;
   version: string;
   branch: string;
+}
+
+interface HealthFailure {
+  kind: "indexer" | "download_client";
+  name: string;
+  message: string;
+}
+
+interface SystemHealth {
+  checked_at: string | null;
+  indexers_checked: number;
+  clients_checked: number;
+  failures: HealthFailure[];
 }
 
 const CURRENT_YEAR = new Date().getFullYear();
@@ -36,6 +49,12 @@ export default function SystemPage() {
     queryKey: ["system-tasks"],
     queryFn: () => api.get<ScheduledTask[]>("/system/tasks"),
     refetchInterval: 15_000,
+  });
+
+  const { data: health } = useQuery({
+    queryKey: ["system-health"],
+    queryFn: () => api.get<SystemHealth>("/system/health"),
+    refetchInterval: 30_000,
   });
 
   const runNow = useMutation({
@@ -184,6 +203,45 @@ export default function SystemPage() {
             </button>
           </div>
         </div>
+      </section>
+
+      {/* Health */}
+      <section>
+        <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-2">
+          Health
+        </h2>
+        {!health || health.checked_at === null ? (
+          <p className="text-text-muted text-sm">
+            Awaiting first health check (runs every 15 minutes — or click Run Now on
+            the <span className="text-text-bright">health_check</span> task below).
+          </p>
+        ) : health.failures.length === 0 ? (
+          <div className="card p-4 flex items-center gap-2">
+            <CheckCircle2 size={16} className="text-status-downloaded shrink-0" />
+            <div className="text-sm">
+              <p className="text-text-bright">All systems operational</p>
+              <p className="text-xs text-text-muted">
+                {health.indexers_checked} indexer(s) and {health.clients_checked} download client(s)
+                reachable. Last check: {new Date(health.checked_at).toLocaleString()}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="card divide-y divide-border">
+            {health.failures.map((f, i) => (
+              <div key={i} className="px-4 py-3 flex items-start gap-2">
+                <AlertTriangle size={14} className="text-status-missing shrink-0 mt-0.5" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-text-bright">
+                    {f.kind === "indexer" ? "Indexer" : "Download client"}{" "}
+                    <span className="text-accent">{f.name}</span> unreachable
+                  </p>
+                  <p className="text-xs text-text-muted font-mono mt-0.5 break-all">{f.message}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* Scheduled Tasks */}

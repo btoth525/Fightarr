@@ -80,9 +80,7 @@ class RealDebridClient:
         """Check Real-Debrid torrent info for a specific job_id."""
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                r = await client.get(
-                    f"{_RD_BASE}/torrents/info/{job_id}", headers=self._auth()
-                )
+                r = await client.get(f"{_RD_BASE}/torrents/info/{job_id}", headers=self._auth())
                 if r.status_code == 404:
                     return None
                 r.raise_for_status()

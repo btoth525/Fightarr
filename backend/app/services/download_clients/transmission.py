@@ -68,8 +68,13 @@ class TransmissionClient:
             "torrent-get",
             {
                 "fields": [
-                    "id", "name", "status", "percentDone",
-                    "totalSize", "hashString", "downloadDir",
+                    "id",
+                    "name",
+                    "status",
+                    "percentDone",
+                    "totalSize",
+                    "hashString",
+                    "downloadDir",
                 ]
             },
         )

@@ -16,10 +16,69 @@ from app.services.newznab import NewznabClient, NewznabRelease
 logger = logging.getLogger(__name__)
 
 
-async def search_all_wanted() -> int:
-    """Search indexers for all wanted events. Returns count grabbed."""
-    logger.debug("search_all_wanted: not yet implemented")
-    return 0
+async def search_all_wanted() -> dict:
+    """Scheduled job — Radarr-style "RSS sync" for monitored missing events.
+
+    For every monitored event that has aired and doesn't yet have a file:
+      1. Skip if there's already an active QueueItem for it
+      2. Run auto_search_and_grab() — search indexers, score, grab the best
+      3. Brief sleep between events so we don't hammer indexers / hit rate limits
+
+    Returns a summary dict for logging and the /system/tasks UI.
+    """
+    import asyncio
+    from datetime import date
+
+    from app.core.database import AsyncSessionLocal
+    from app.models.event import Event, EventStatus
+    from app.models.queue_item import QueueItem, QueueStatus
+    from app.services.grab_service import auto_search_and_grab
+
+    async with AsyncSessionLocal() as session:
+        # Monitored, aired, no file yet
+        result = await session.execute(
+            select(Event)
+            .where(Event.monitored.is_(True))
+            .where(Event.file_path.is_(None))
+            .where(Event.event_date <= date.today())
+            .where(Event.status != EventStatus.DOWNLOADED)
+            .order_by(Event.event_date.desc())
+        )
+        wanted = list(result.scalars().all())
+
+        # Skip events that already have an active grab
+        active_q = await session.execute(
+            select(QueueItem.event_id).where(
+                QueueItem.status.in_([QueueStatus.GRABBED, QueueStatus.DOWNLOADING])
+            )
+        )
+        active_event_ids = {row[0] for row in active_q.all()}
+
+    candidates = [e for e in wanted if e.id not in active_event_ids]
+    logger.info(
+        "RSS sync: %d wanted events, %d already in queue, %d to search",
+        len(wanted),
+        len(wanted) - len(candidates),
+        len(candidates),
+    )
+
+    grabbed = 0
+    for event in candidates:
+        try:
+            result = await auto_search_and_grab(event.id)
+            if result is not None:
+                grabbed += 1
+                logger.info("RSS sync grabbed %s for event %d", result.get("job_id"), event.id)
+        except Exception as exc:
+            logger.warning("RSS sync failed for event %d: %s", event.id, exc)
+        # Be nice to indexers — short delay between events
+        await asyncio.sleep(2.0)
+
+    return {
+        "checked": len(candidates),
+        "grabbed": grabbed,
+        "skipped_in_queue": len(active_event_ids),
+    }
 
 
 async def search_event(event_id: int) -> dict:
