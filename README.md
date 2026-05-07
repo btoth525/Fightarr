@@ -138,6 +138,39 @@ npm run dev
 
 ---
 
+## Library output (Plex-ready)
+
+When a download completes, Fightarr renames and organizes files exactly the way Plex expects:
+
+```
+{media_root}/
+├── UFC 300 - Pereira vs. Hill (2024)/
+│   ├── UFC 300 - Pereira vs. Hill (2024) WEBDL-1080p.mkv
+│   └── poster.jpg
+├── UFC Fight Night - Strickland vs. Hernandez (2026)/
+│   ├── UFC Fight Night - Strickland vs. Hernandez (2026) WEBDL-1080p.mkv
+│   └── poster.jpg
+└── ...
+```
+
+- **Folder format**: `{Title} ({Year})` — Radarr-compatible, Plex Movie agent picks it up automatically
+- **Filename format**: `{Folder} {Quality}.{ext}` with full quality profile (`WEBDL-1080p`, `Bluray-2160p`, `WEBRip-720p`, `HDTV-720p`)
+- **Poster art**: `poster.jpg` is downloaded into each event folder — Plex's Local Media Assets agent uses it as the cover even without a TMDB match
+- **Hardlinks-first**: imports use `os.link()` so the original NZB stays seedable; falls back to copy across filesystems
+- **Sample skipping**: anything under 100 MB or with "sample" in the name is ignored
+
+### SAB / NZBGet category setup
+
+Fightarr sends every download with a `cat=` param (default: `ufc`). Configure your downloader to put that category somewhere Fightarr can read:
+
+**SABnzbd**: Settings → Categories → Add a category named `ufc`. Set the folder to whatever incomplete/complete path you use (e.g. `/downloads/ufc`). That's it — Fightarr's queue monitor watches SAB history, finds the largest video file, renames it, and moves it into your media root.
+
+**NZBGet**: Settings → Categories → Add `ufc` with a destination dir. Same flow as SAB.
+
+You don't need post-processing scripts. Fightarr handles renaming, poster art, and Plex/Jellyfin notification on its own — same model as Radarr.
+
+---
+
 ## Architecture
 
 ```
