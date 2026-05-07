@@ -96,6 +96,26 @@ export interface AppSettings {
   jellyfin_host: string;
   jellyfin_token: string;
   jellyfin_library_id: string;
+  webhook_url: string;
+  webhook_events: string;
+}
+
+export interface BlocklistEntry {
+  id: number;
+  event_id: number | null;
+  event_title: string | null;
+  release_title: string;
+  nzb_url: string | null;
+  indexer_name: string | null;
+  reason: string | null;
+  blocked_at: string;
+}
+
+export interface LogEntry {
+  ts: string;
+  level: "DEBUG" | "INFO" | "WARNING" | "ERROR" | "CRITICAL";
+  logger: string;
+  message: string;
 }
 
 export interface ScheduledTask {

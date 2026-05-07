@@ -46,6 +46,8 @@ class SettingsOut(BaseModel):
     jellyfin_host: str
     jellyfin_token: str
     jellyfin_library_id: str
+    webhook_url: str
+    webhook_events: str
 
 
 def _out(r: AppSettings) -> SettingsOut:
@@ -59,6 +61,8 @@ def _out(r: AppSettings) -> SettingsOut:
         jellyfin_host=r.jellyfin_host,
         jellyfin_token=_mask(r.jellyfin_token),
         jellyfin_library_id=r.jellyfin_library_id,
+        webhook_url=_mask(r.webhook_url),
+        webhook_events=r.webhook_events,
     )
 
 
@@ -138,6 +142,35 @@ async def update_jellyfin(
     await session.commit()
     await session.refresh(r)
     return _out(r)
+
+
+class WebhookIn(BaseModel):
+    webhook_url: str
+    webhook_events: str  # CSV of: grab,import,failed,health
+
+
+@router.put("/settings/connect/webhook", response_model=SettingsOut)
+async def update_webhook(
+    body: WebhookIn, session: AsyncSession = Depends(get_session)
+) -> SettingsOut:
+    r = await _row(session)
+    if body.webhook_url != SENTINEL:
+        r.webhook_url = body.webhook_url
+    r.webhook_events = body.webhook_events
+    await session.commit()
+    await session.refresh(r)
+    return _out(r)
+
+
+@router.post("/settings/connect/webhook/test")
+async def test_webhook_endpoint(session: AsyncSession = Depends(get_session)) -> dict:
+    from app.services.notifications import test_webhook
+
+    r = await _row(session)
+    if not r.webhook_url:
+        return {"success": False, "message": "No webhook URL configured"}
+    ok, msg = await test_webhook(r.webhook_url)
+    return {"success": ok, "message": msg}
 
 
 # ── Test connections ──────────────────────────────────────────────────────────

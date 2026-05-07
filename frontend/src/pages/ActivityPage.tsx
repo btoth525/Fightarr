@@ -10,11 +10,13 @@ import {
   Clock,
   Loader2,
   PackageCheck,
+  Ban,
 } from "lucide-react";
 import clsx from "clsx";
+import { toast } from "sonner";
 
 import { api } from "../api/client";
-import type { QueueItem } from "../api/types";
+import type { QueueItem, BlocklistEntry } from "../api/types";
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
@@ -71,7 +73,7 @@ function QualityBadge({ title }: { title: string }) {
 // ── page ───────────────────────────────────────────────────────────────────
 
 export default function ActivityPage() {
-  const [tab, setTab] = useState<"queue" | "history">("queue");
+  const [tab, setTab] = useState<"queue" | "history" | "blocklist">("queue");
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -88,11 +90,35 @@ export default function ActivityPage() {
     refetchInterval: tab === "history" ? 15_000 : false,
   });
 
+  const { data: blocklist = [], isLoading: bLoading } = useQuery({
+    queryKey: ["blocklist"],
+    queryFn: () => api.get<BlocklistEntry[]>("/blocklist"),
+    enabled: tab === "blocklist",
+  });
+
   const removeItem = useMutation({
     mutationFn: (id: number) => api.delete(`/queue/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["queue"] });
       queryClient.invalidateQueries({ queryKey: ["history"] });
+    },
+  });
+
+  const removeBlock = useMutation({
+    mutationFn: (id: number) => api.delete(`/blocklist/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["blocklist"] });
+      toast.success("Removed from blocklist", {
+        description: "This release can be auto-grabbed again.",
+      });
+    },
+  });
+
+  const clearBlocklist = useMutation({
+    mutationFn: () => api.post<{ deleted: number }>("/blocklist/clear"),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["blocklist"] });
+      toast.success(`Cleared ${data.deleted} blocklist entries`);
     },
   });
 
@@ -115,6 +141,14 @@ export default function ActivityPage() {
         </TabBtn>
         <TabBtn active={tab === "history"} onClick={() => setTab("history")}>
           History
+        </TabBtn>
+        <TabBtn active={tab === "blocklist"} onClick={() => setTab("blocklist")}>
+          Blocklist
+          {blocklist.length > 0 && (
+            <span className="ml-1.5 text-xs px-1.5 py-0.5 rounded-full bg-status-missing/20 text-status-missing font-medium">
+              {blocklist.length}
+            </span>
+          )}
         </TabBtn>
       </div>
 
@@ -176,6 +210,97 @@ export default function ActivityPage() {
           )}
         </>
       )}
+
+      {/* Blocklist */}
+      {tab === "blocklist" && (
+        <>
+          {bLoading && <p className="text-text-muted text-sm">Loading…</p>}
+          {!bLoading && blocklist.length === 0 && (
+            <div className="card p-12 text-center">
+              <Ban size={32} className="mx-auto text-text-dim mb-3" />
+              <p className="text-text-muted">Blocklist is empty.</p>
+              <p className="text-text-dim text-sm mt-1">
+                Releases that fail to download or import are added here automatically
+                so they aren't auto-grabbed again.
+              </p>
+            </div>
+          )}
+          {blocklist.length > 0 && (
+            <>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs text-text-muted">
+                  {blocklist.length} release{blocklist.length !== 1 ? "s" : ""} blocklisted
+                </p>
+                <button
+                  className="text-xs text-text-dim hover:text-status-missing"
+                  onClick={() => clearBlocklist.mutate()}
+                  disabled={clearBlocklist.isPending}
+                >
+                  Clear all
+                </button>
+              </div>
+              <div className="card divide-y divide-border">
+                {blocklist.map((b) => (
+                  <BlocklistRow
+                    key={b.id}
+                    entry={b}
+                    onGoToEvent={() => b.event_id && navigate(`/events/${b.event_id}`)}
+                    onRemove={() => removeBlock.mutate(b.id)}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── blocklist row ──────────────────────────────────────────────────────────
+
+function BlocklistRow({
+  entry,
+  onGoToEvent,
+  onRemove,
+}: {
+  entry: BlocklistEntry;
+  onGoToEvent: () => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="px-4 py-3 flex items-start gap-3 hover:bg-bg-elevated transition-colors group">
+      <Ban size={14} className="text-status-missing shrink-0 mt-1" />
+      <div className="flex-1 min-w-0">
+        {entry.event_title && (
+          <button
+            className="text-xs text-accent hover:underline block truncate text-left mb-0.5"
+            onClick={onGoToEvent}
+          >
+            {entry.event_title}
+          </button>
+        )}
+        <p className="text-sm font-mono text-text-bright truncate" title={entry.release_title}>
+          {entry.release_title}
+        </p>
+        <div className="flex items-center gap-2 mt-1 text-xs text-text-dim">
+          {entry.indexer_name && <span>{entry.indexer_name}</span>}
+          <span>·</span>
+          <span>{timeAgo(entry.blocked_at)}</span>
+        </div>
+        {entry.reason && (
+          <p className="text-xs text-status-missing/80 mt-1 truncate" title={entry.reason}>
+            {entry.reason}
+          </p>
+        )}
+      </div>
+      <button
+        className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-text-dim hover:text-accent rounded shrink-0"
+        onClick={onRemove}
+        title="Remove from blocklist (allow auto-grab again)"
+      >
+        <Trash2 size={13} />
+      </button>
     </div>
   );
 }

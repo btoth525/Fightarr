@@ -12,12 +12,28 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import download_clients, events, health, indexers, queue, settings_api, webhooks
+# Import models so SQLAlchemy registers their tables on init_db()
+import app.models.blocklist
+from app.api import (
+    blocklist as blocklist_api,
+)
+from app.api import (
+    download_clients,
+    events,
+    health,
+    indexers,
+    queue,
+    settings_api,
+    webhooks,
+)
 from app.core.config import settings
 from app.core.database import init_db
+from app.core.log_buffer import install as install_log_buffer
 from app.core.scheduler import start_scheduler, stop_scheduler
 
 logger = logging.getLogger(__name__)
+
+install_log_buffer()
 
 
 async def _startup_sync() -> None:
@@ -71,6 +87,7 @@ app.include_router(download_clients.router, prefix=API_PREFIX, tags=["download-c
 app.include_router(queue.router, prefix=API_PREFIX, tags=["queue"])
 app.include_router(settings_api.router, prefix=API_PREFIX, tags=["settings"])
 app.include_router(webhooks.router, prefix=API_PREFIX, tags=["webhooks"])
+app.include_router(blocklist_api.router, prefix=API_PREFIX, tags=["blocklist"])
 
 
 @app.get("/")

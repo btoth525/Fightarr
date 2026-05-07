@@ -108,6 +108,18 @@ async def grab_release(
             job_id,
             qi.id,
         )
+
+        # Fire grab notification (Discord/webhook). Best-effort; don't fail the grab.
+        try:
+            from app.models.event import Event
+            from app.services import notifications
+
+            event = await session.get(Event, event_id)
+            if event is not None:
+                await notifications.on_grab(event, release_title, indexer_name, dc.name)
+        except Exception as exc:
+            logger.debug("Grab notification skipped: %s", exc)
+
         return {
             "status": "grabbed",
             "job_id": job_id,
@@ -139,10 +151,24 @@ async def auto_search_and_grab(event_id: int) -> dict | None:
         logger.info("Auto-search: 0 releases for event %d", event_id)
         return None
 
+    # Filter out anything currently blocklisted (failed downloads we won't retry)
+    from app.services import blocklist_service
+
+    async with AsyncSessionLocal() as s:
+        blocked_titles, blocked_urls = await blocklist_service.get_blocked_keys(s)
+    before = len(releases)
+    releases = blocklist_service.filter_releases(releases, blocked_titles, blocked_urls)
+    if before != len(releases):
+        logger.info(
+            "Auto-search: filtered %d blocklisted release(s) for event %d",
+            before - len(releases),
+            event_id,
+        )
+
     best = pick_best_release(releases, min_score=50)
     if best is None:
         logger.info(
-            "Auto-search: no release above min score for event %d (%d candidates)",
+            "Auto-search: no release above min score for event %d (%d candidates after blocklist)",
             event_id,
             len(releases),
         )

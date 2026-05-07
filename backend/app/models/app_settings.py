@@ -27,3 +27,7 @@ class AppSettings(Base):
     jellyfin_host: Mapped[str] = mapped_column(String(500), default="")
     jellyfin_token: Mapped[str] = mapped_column(String(200), default="")
     jellyfin_library_id: Mapped[str] = mapped_column(String(50), default="")
+
+    # Notifications (Discord-compatible webhook)
+    webhook_url: Mapped[str] = mapped_column(String(500), default="")
+    webhook_events: Mapped[str] = mapped_column(String(200), default="grab,import,failed")

@@ -18,6 +18,8 @@ interface AppSettings {
   jellyfin_host: string;
   jellyfin_token: string;
   jellyfin_library_id: string;
+  webhook_url: string;
+  webhook_events: string;
 }
 
 // ─── Labels ──────────────────────────────────────────────────────────────────
@@ -81,6 +83,7 @@ export default function SettingsPage() {
       <DownloadClientsSection />
       <PlexSection settings={settings} />
       <JellyfinSection settings={settings} />
+      <NotificationsSection settings={settings} />
       <MetadataSection settings={settings} />
     </div>
   );
@@ -706,6 +709,124 @@ function JellyfinSection({ settings }: { settings: AppSettings }) {
           <label className="block text-sm text-text-bright mb-1">Library ID</label>
           <input className="input w-full" placeholder="Leave blank to refresh all libraries" value={libraryId} onChange={(e) => setLibraryId(e.target.value)} />
         </div>
+        <div className="flex gap-2 justify-end pt-1">
+          <TestBtn status={testStatus} onClick={test} />
+          <SaveBtn status={saveStatus} onClick={save} />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ─── Notifications (Discord-compatible webhook) ───────────────────────────────
+
+function NotificationsSection({ settings }: { settings: AppSettings }) {
+  const qc = useQueryClient();
+  const [url, setUrl] = useState(settings.webhook_url);
+  const [events, setEvents] = useState(settings.webhook_events);
+  const [saveStatus, runSave] = useSaveStatus();
+  const [testStatus, setTestStatus] = useState<TestStatus>("idle");
+
+  useEffect(() => {
+    setUrl(settings.webhook_url);
+    setEvents(settings.webhook_events);
+  }, [settings.webhook_url, settings.webhook_events]);
+
+  const allEvents = ["grab", "import", "failed", "health"];
+  const enabled = new Set(events.split(",").map((s) => s.trim()).filter(Boolean));
+
+  function toggleEvent(name: string) {
+    const next = new Set(enabled);
+    if (next.has(name)) next.delete(name);
+    else next.add(name);
+    setEvents(Array.from(next).join(","));
+  }
+
+  function save() {
+    runSave(
+      api
+        .put("/settings/connect/webhook", { webhook_url: url, webhook_events: events })
+        .then(() => qc.invalidateQueries({ queryKey: ["settings"] })),
+    );
+  }
+
+  async function test() {
+    setTestStatus("testing");
+    try {
+      const r = await api.post<{ success: boolean; message: string }>(
+        "/settings/connect/webhook/test",
+      );
+      setTestStatus(r.success ? "ok" : "fail");
+      if (r.success) toast.success("Webhook test sent", { description: r.message });
+      else toast.error("Webhook test failed", { description: r.message });
+    } catch (e) {
+      setTestStatus("fail");
+      toast.error("Webhook test failed", {
+        description: e instanceof Error ? e.message : undefined,
+      });
+    }
+    setTimeout(() => setTestStatus("idle"), 3000);
+  }
+
+  return (
+    <section className="card p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="font-semibold text-text-bright">Notifications</h2>
+          <p className="text-xs text-text-muted mt-0.5">
+            Discord-compatible webhook · pings on grab / import / failure / health alerts
+          </p>
+        </div>
+        <Link2 size={16} className="text-text-dim" />
+      </div>
+
+      <div className="border-t border-border pt-4 space-y-3">
+        <div>
+          <label className="block text-sm text-text-bright mb-1">Webhook URL</label>
+          <input
+            className="input w-full"
+            type="password"
+            placeholder={
+              settings.webhook_url === "***"
+                ? "Webhook configured — enter new URL to change"
+                : "https://discord.com/api/webhooks/…"
+            }
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+          />
+          <p className="text-xs text-text-dim mt-1">
+            Discord, Slack-compatible, or any endpoint that accepts Discord embed JSON.
+          </p>
+        </div>
+
+        <div>
+          <label className="block text-sm text-text-bright mb-2">Events</label>
+          <div className="flex flex-wrap gap-2">
+            {allEvents.map((name) => {
+              const on = enabled.has(name);
+              return (
+                <button
+                  key={name}
+                  onClick={() => toggleEvent(name)}
+                  className={`px-3 py-1 rounded text-xs font-medium border transition-colors ${
+                    on
+                      ? "bg-accent/20 border-accent text-accent"
+                      : "bg-bg-elevated border-border text-text-muted hover:text-text"
+                  }`}
+                >
+                  {name}
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-xs text-text-dim mt-2">
+            <span className="text-text-muted">grab</span> = release sent to client ·{" "}
+            <span className="text-text-muted">import</span> = file moved to library ·{" "}
+            <span className="text-text-muted">failed</span> = download/import failure ·{" "}
+            <span className="text-text-muted">health</span> = indexer/client offline
+          </p>
+        </div>
+
         <div className="flex gap-2 justify-end pt-1">
           <TestBtn status={testStatus} onClick={test} />
           <SaveBtn status={saveStatus} onClick={save} />

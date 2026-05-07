@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Play, Download, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { Play, Download, AlertTriangle, CheckCircle2, FileText } from "lucide-react";
 import { toast } from "sonner";
 
 import { api } from "../api/client";
-import type { ScheduledTask } from "../api/types";
+import type { ScheduledTask, LogEntry } from "../api/types";
 
 interface SystemStatus {
   appName: string;
@@ -56,6 +56,14 @@ export default function SystemPage() {
     queryKey: ["system-health"],
     queryFn: () => api.get<SystemHealth>("/system/health"),
     refetchInterval: 30_000,
+  });
+
+  const [logLevel, setLogLevel] = useState<string>("");
+  const { data: logs = [], isLoading: logsLoading } = useQuery({
+    queryKey: ["system-logs", logLevel],
+    queryFn: () =>
+      api.get<LogEntry[]>(`/system/logs?limit=300${logLevel ? `&level=${logLevel}` : ""}`),
+    refetchInterval: 10_000,
   });
 
   const runNow = useMutation({
@@ -287,6 +295,74 @@ export default function SystemPage() {
           </div>
         )}
       </section>
+
+      {/* Logs */}
+      <section>
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider">
+            Logs
+          </h2>
+          <div className="flex rounded border border-border overflow-hidden text-xs">
+            {[
+              { val: "", label: "All" },
+              { val: "INFO", label: "Info" },
+              { val: "WARNING", label: "Warn" },
+              { val: "ERROR", label: "Error" },
+            ].map((opt) => (
+              <button
+                key={opt.label}
+                className={`px-2.5 py-1 ${
+                  logLevel === opt.val
+                    ? "bg-bg-elevated text-text-bright"
+                    : "bg-bg-panel text-text-muted hover:text-text"
+                }`}
+                onClick={() => setLogLevel(opt.val)}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {logsLoading && logs.length === 0 ? (
+          <p className="text-text-muted text-sm">Loading…</p>
+        ) : logs.length === 0 ? (
+          <div className="card p-8 text-center">
+            <FileText size={24} className="mx-auto text-text-dim mb-2" />
+            <p className="text-text-muted text-sm">No log entries yet.</p>
+          </div>
+        ) : (
+          <div className="card max-h-[480px] overflow-y-auto font-mono text-[11px]">
+            {logs.slice().reverse().map((line, i) => (
+              <LogRow key={i} entry={line} />
+            ))}
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function LogRow({ entry }: { entry: LogEntry }) {
+  const levelColor: Record<string, string> = {
+    DEBUG: "text-text-dim",
+    INFO: "text-text-muted",
+    WARNING: "text-yellow-400",
+    ERROR: "text-status-missing",
+    CRITICAL: "text-status-missing",
+  };
+  const ts = new Date(entry.ts).toLocaleTimeString();
+  return (
+    <div className="px-3 py-1 flex items-start gap-3 border-b border-border/30 hover:bg-bg-elevated/40 transition-colors">
+      <span className="text-text-dim shrink-0 w-20">{ts}</span>
+      <span
+        className={`shrink-0 w-12 font-semibold ${levelColor[entry.level] ?? "text-text-muted"}`}
+      >
+        {entry.level}
+      </span>
+      <span className="text-text-dim shrink-0 w-32 truncate" title={entry.logger}>
+        {entry.logger}
+      </span>
+      <span className="text-text break-all flex-1">{entry.message}</span>
     </div>
   );
 }

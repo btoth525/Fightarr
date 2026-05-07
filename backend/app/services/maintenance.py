@@ -140,6 +140,17 @@ async def health_check() -> dict:
         "clients_checked": len(clients),
         "failures": failures,
     }
+
+    # Fire a webhook ping if state transitions from healthy → unhealthy
+    prev_failures = _last_health.get("failures", []) or []
+    if failures and not prev_failures:
+        try:
+            from app.services import notifications
+
+            await notifications.on_health(failures)
+        except Exception as exc:
+            logger.debug("Health notification skipped: %s", exc)
+
     _last_health.clear()
     _last_health.update(result)
     return result

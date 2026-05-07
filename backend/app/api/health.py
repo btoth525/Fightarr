@@ -73,3 +73,15 @@ async def system_health() -> dict:
     from app.services.maintenance import get_last_health
 
     return get_last_health()
+
+
+@router.get("/system/logs")
+async def system_logs(limit: int = 500, level: str | None = None) -> list[dict]:
+    """Return the most recent in-memory log lines.
+
+    Buffer holds up to 2000 entries (INFO and above). Pass level=WARNING/ERROR
+    to filter. Designed for the System → Logs UI panel.
+    """
+    from app.core.log_buffer import get_logs
+
+    return get_logs(limit=limit, level=level)
