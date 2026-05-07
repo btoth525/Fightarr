@@ -71,6 +71,7 @@ export interface SearchRelease {
   nzb_url: string;
   pub_date: string | null;
   guid: string | null;
+  protocol: "nzb" | "torrent";
 }
 
 export interface HistoryItem {

@@ -34,12 +34,16 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 
 This is what makes Fightarr useful. Everything else is polish on top.
 
-### 1.1 Query Builder ⬜
+### 1.1 Query Builder ✅
 **Radarr equivalent**: movie title + year → search string
-- PPV numbered:  `UFC.300`, `UFC 300`, `UFC.300.Pereira.vs.Hill`
-- Fight Night:   `UFC.Fight.Night.2024.04.06`, `UFC.Fight.Night.Hill.vs.Pereira`
-- Fighter names from `main_event` field as third-pass fallback
-- Returns `list[str]` of queries to try in order
+- PPV numbered:  `UFC 300`, `UFC.300`
+- Fight Night with sequential number (e.g. "UFC Fight Night 267"): `UFC Fight Night 267`, `UFC.Fight.Night.267`
+- Fight Night date fallback: `UFC Fight Night 2024 10 05`, `UFC.Fight.Night.2024.10.05`
+- Fighter surnames from `main_event` as third-pass fallback: `UFC Strickland Hernandez`
+- NZB vs Torrent protocol badge on search results
+- Full quality profile display: `WEBDL-1080p`, `WEBRip-720p`, `Bluray-1080p`, `HDTV-720p`
+- Prelims badge + sort order (main card first, higher quality first, larger file first)
+- Search diagnostics: indexer errors and queries tried shown in UI
 
 ### 1.2 Release Scorer ⬜
 **Radarr equivalent**: custom format score + quality profile cutoff
@@ -70,22 +74,26 @@ This is what makes Fightarr useful. Everything else is polish on top.
 - Runs on APScheduler every 30 min (already wired, just needs implementation)
 - `POST /command/EventSearch` — manual trigger for a single event
 
-### 1.5 Manual / Interactive Search ⬜
+### 1.5 Manual / Interactive Search ✅
 **Radarr equivalent**: Movie detail → Interactive Search tab
-- `GET /event/{id}/search` — returns all scored releases without grabbing
-- Frontend: modal showing release table with columns:
-  Indexer · Title · Size · Age · Peers/Seeds · Quality · Score · Grab button
-- Grab button: `POST /event/{id}/grab` with `{ release_guid, indexer_id }`
+- `POST /event/{id}/search` — returns all releases across all enabled indexers
+- Frontend modal: Source · Age · Title · Quality · Indexer · Size · Grab
+- Quality badge: full Radarr-style profiles (WEBDL-1080p, WEBRip-720p, etc.)
+- Prelims badge + smart sort (main card first, best quality first, largest file first)
+- Protocol color coding: NZB (orange) vs Torrent (blue)
+- Grab button: `POST /event/{id}/grab` with `{ nzb_url, release_title, size_bytes, indexer_name }`
+- Search diagnostics: shows indexer errors and queries tried on failure
 
-### 1.6 Event Detail Page ⬜
+### 1.6 Event Detail Page ✅
 **Radarr equivalent**: Movie detail overlay/page
 - Route: `/events/{id}`
-- Poster (large) + metadata panel
-- Tabs: Overview · History · Search (interactive search)
-- Overview: title, date, venue, location, main event, co-main, status badge, quality
-- History tab: all QueueItems for this event (grabbed, downloaded, failed, imported)
-- Manual search trigger button ("Search")
-- Edit monitored / quality profile inline
+- Blurred poster backdrop + metadata panel with monitor toggle
+- Prev / Next keyboard navigation (← →)
+- Event Details card: status, type, number, date, venue, quality
+- File section: shows path after import
+- History modal: all QueueItems for this event
+- Interactive Search modal: full search + grab workflow
+- Refresh & Scan toolbar button
 
 ---
 
@@ -152,15 +160,16 @@ Tabs to implement:
 - `useToast()` hook used throughout mutations
 - `react-hot-toast` or build a simple custom implementation
 
-### 3.5 Activity Page — Full Queue + History ⬜
+### 3.5 Activity Page — Full Queue + History ✅
 **Radarr equivalent**: Activity > Queue + Activity > History
-- **Queue tab**: active downloads with progress bars, ETA, size, status badges
-  - Columns: Event · Client · Title · Status · Progress · Size · Time Left · Actions
-  - Actions: Force check · Remove from queue (+ blacklist option)
-  - Auto-refresh every 10s
-- **History tab**: completed/failed downloads
-  - Columns: Event · Source title · Date · Quality · Action (grabbed/imported/failed)
-  - Filter by event or status
+- **Queue tab**: live progress bars, size, status badges, indexer/client columns
+  - Columns: Release · Quality · Size · Progress · Indexer · Client · Status · Remove
+  - Auto-refresh every 8s; remove button per row
+  - Error banner inline for failed items
+- **History tab**: completed/failed downloads with file paths
+  - Columns: Release · Quality · Size · Date + timeago · Indexer · Status · Remove
+  - Shows download path for imported items
+  - Auto-refresh every 15s (only when tab active)
 
 ### 3.6 Wanted Page — Full Implementation ⬜
 **Radarr equivalent**: Wanted > Missing + Wanted > Cutoff Unmet

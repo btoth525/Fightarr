@@ -4,6 +4,7 @@ Searches configured Newznab/Torznab indexers for releases matching a UFC event.
 """
 
 import logging
+import re
 
 from sqlalchemy import select
 
@@ -34,19 +35,34 @@ async def search_event(event_id: int) -> dict:
         indexers = list(result.scalars().all())
 
     if not indexers:
-        return {"event_id": event_id, "releases": [], "message": "No indexers configured"}
+        return {
+            "event_id": event_id,
+            "releases": [],
+            "queries_tried": [],
+            "errors": ["No indexers configured. Add an indexer in Settings → Indexers."],
+        }
 
     queries = _build_queries(event)
     all_releases: list[NewznabRelease] = []
+    errors: list[str] = []
+    searched_queries: list[str] = []
 
     for indexer in indexers:
+        protocol = "torrent" if indexer.indexer_type == "torznab" else "nzb"
         client = NewznabClient(indexer.name, indexer.url, indexer.api_key)
         for query in queries:
+            label = f"{indexer.name}: {query!r}"
+            if label not in searched_queries:
+                searched_queries.append(label)
             try:
                 releases = await client.search(query, categories=indexer.categories)
+                for r in releases:
+                    r.protocol = protocol
                 all_releases.extend(releases)
                 logger.info("Indexer %s query %r → %d results", indexer.name, query, len(releases))
             except Exception as exc:
+                msg = f"{indexer.name} [{query!r}]: {exc}"
+                errors.append(msg)
                 logger.warning("Search failed on %s for %r: %s", indexer.name, query, exc)
 
     seen: set[str] = set()
@@ -60,6 +76,8 @@ async def search_event(event_id: int) -> dict:
     return {
         "event_id": event_id,
         "total": len(unique),
+        "queries_tried": searched_queries,
+        "errors": errors,
         "releases": [
             {
                 "title": r.title,
@@ -68,6 +86,7 @@ async def search_event(event_id: int) -> dict:
                 "nzb_url": r.nzb_url,
                 "pub_date": r.pub_date,
                 "guid": r.guid,
+                "protocol": r.protocol,
             }
             for r in unique
         ],
@@ -88,13 +107,18 @@ def _build_queries(event: Event) -> list[str]:
         # Numbered PPVs: "UFC 300", "UFC.300"
         queries += [f"UFC {event.event_number}", f"UFC.{event.event_number}"]
     else:
-        # Fight Nights and specials — search by date
+        # Fight Nights — primary: sequential number from title (e.g. "UFC Fight Night 273")
+        # Many indexers use this number rather than the air date.
+        fn_number = _extract_fight_night_number(event.title)
+        if fn_number:
+            queries += [
+                f"UFC Fight Night {fn_number}",
+                f"UFC.Fight.Night.{fn_number}",
+            ]
+        # Fallback: date-format queries for indexers that use air date instead
         queries += [
             f"UFC Fight Night {d.strftime('%Y %m %d')}",
             f"UFC.Fight.Night.{d.strftime('%Y.%m.%d')}",
-            # Some indexers use just the year-month-day without "Fight.Night"
-            f"UFC {d.strftime('%Y %m %d')}",
-            f"UFC.{d.strftime('%Y.%m.%d')}",
         ]
 
     # Supplement with fighter surnames from main_event ("Pereira vs Hill")
@@ -115,10 +139,14 @@ def _build_queries(event: Event) -> list[str]:
     return unique
 
 
+def _extract_fight_night_number(title: str) -> int | None:
+    """Extract sequential Fight Night number from 'UFC Fight Night 273: ...' → 273."""
+    m = re.search(r"UFC\s+Fight\s+Night\s+(\d+)", title, re.IGNORECASE)
+    return int(m.group(1)) if m else None
+
+
 def _extract_fighters(main_event: str) -> list[str]:
     """Extract surnames from a 'Fighter A vs Fighter B' string."""
-    import re
-
     # Strip descriptors like "(c)" and extra whitespace
     clean = re.sub(r"\(.*?\)", "", main_event).strip()
     parts = re.split(r"\s+vs\.?\s+", clean, flags=re.IGNORECASE)

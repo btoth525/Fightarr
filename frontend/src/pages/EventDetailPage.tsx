@@ -37,6 +37,8 @@ export default function EventDetailPage() {
   const [imgError, setImgError] = useState(false);
   const [searchResults, setSearchResults] = useState<SearchRelease[] | null>(null);
   const [searchMessage, setSearchMessage] = useState<string | null>(null);
+  const [searchErrors, setSearchErrors] = useState<string[]>([]);
+  const [queriesTried, setQueriesTried] = useState<string[]>([]);
 
   const { data: event, isLoading } = useQuery({
     queryKey: ["event", eventId],
@@ -81,12 +83,18 @@ export default function EventDetailPage() {
 
   const doSearch = useMutation({
     mutationFn: () =>
-      api.post<{ releases: SearchRelease[]; total: number; message?: string }>(
-        `/event/${eventId}/search`,
-      ),
+      api.post<{
+        releases: SearchRelease[];
+        total: number;
+        message?: string;
+        errors?: string[];
+        queries_tried?: string[];
+      }>(`/event/${eventId}/search`),
     onSuccess: (data) => {
       setSearchResults(data.releases);
       setSearchMessage(data.message ?? null);
+      setSearchErrors(data.errors ?? []);
+      setQueriesTried(data.queries_tried ?? []);
     },
   });
 
@@ -350,6 +358,8 @@ export default function EventDetailPage() {
         <InteractiveSearchContent
           results={searchResults}
           message={searchMessage}
+          errors={searchErrors}
+          queriesTried={queriesTried}
           isSearching={doSearch.isPending}
           onSearch={() => doSearch.mutate()}
           onGrab={(r) => grab.mutate(r)}
@@ -424,6 +434,8 @@ function InfoRow({
 function InteractiveSearchContent({
   results,
   message,
+  errors,
+  queriesTried,
   isSearching,
   onSearch,
   onGrab,
@@ -431,11 +443,15 @@ function InteractiveSearchContent({
 }: {
   results: SearchRelease[] | null;
   message: string | null;
+  errors: string[];
+  queriesTried: string[];
   isSearching: boolean;
   onSearch: () => void;
   onGrab: (r: SearchRelease) => void;
   grabbingTitle: string | null;
 }) {
+  const [showDiag, setShowDiag] = useState(false);
+
   return (
     <div>
       {/* Sub-header */}
@@ -465,6 +481,19 @@ function InteractiveSearchContent({
         </div>
       )}
 
+      {/* Indexer errors */}
+      {!isSearching && errors.length > 0 && (
+        <div className="mx-4 mt-3 p-2.5 text-xs bg-status-missing/10 border border-status-missing/30 rounded space-y-1">
+          <p className="font-semibold text-status-missing flex items-center gap-1.5">
+            <AlertTriangle size={12} />
+            {errors.length} indexer error{errors.length !== 1 ? "s" : ""}
+          </p>
+          {errors.map((e, i) => (
+            <p key={i} className="text-status-missing/80 font-mono text-[10px] pl-4">{e}</p>
+          ))}
+        </div>
+      )}
+
       {isSearching && (
         <div className="p-8 text-center text-text-muted text-sm">
           <Search size={24} className="mx-auto mb-3 animate-pulse opacity-40" />
@@ -477,8 +506,33 @@ function InteractiveSearchContent({
           <AlertTriangle size={24} className="mx-auto mb-3 opacity-40" />
           <p>No releases found.</p>
           <p className="text-xs mt-1 text-text-dim">
-            Fightarr searches without a year tag — UFC releases are searched by event number or date.
+            Fightarr searches without a year tag — queries use the event number or date.
           </p>
+          {errors.length === 0 && queriesTried.length > 0 && (
+            <p className="text-xs mt-2 text-text-dim">
+              Indexer returned 0 results for the queries below.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Diagnostic: queries tried */}
+      {!isSearching && results !== null && queriesTried.length > 0 && (
+        <div className="border-t border-border">
+          <button
+            className="w-full px-4 py-2 text-xs text-text-dim hover:text-text-muted flex items-center gap-1.5 transition-colors"
+            onClick={() => setShowDiag((v) => !v)}
+          >
+            <span>{showDiag ? "▾" : "▸"}</span>
+            Search details ({queriesTried.length} quer{queriesTried.length !== 1 ? "ies" : "y"})
+          </button>
+          {showDiag && (
+            <div className="px-4 pb-3 space-y-0.5">
+              {queriesTried.map((q, i) => (
+                <p key={i} className="text-[10px] font-mono text-text-dim">{q}</p>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -487,7 +541,7 @@ function InteractiveSearchContent({
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-border bg-bg-elevated/60">
-                {["Source", "Age", "Title", "Indexer", "Size", ""].map((h) => (
+                {["Source", "Age", "Title", "Quality", "Indexer", "Size", ""].map((h) => (
                   <th
                     key={h}
                     className="text-left px-3 py-2 text-text-dim font-medium uppercase tracking-wider whitespace-nowrap"
@@ -498,7 +552,7 @@ function InteractiveSearchContent({
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {results.map((r) => (
+              {sortReleases(results).map((r) => (
                 <SearchResultRow
                   key={r.guid ?? r.title}
                   release={r}
@@ -527,15 +581,23 @@ function SearchResultRow({
     ? Math.abs(differenceInDays(new Date(), new Date(release.pub_date)))
     : null;
 
-  // Rough quality detection from title
   const quality = detectQuality(release.title);
+  const isPrelims = /prelim/i.test(release.title);
+  const isTorrent = release.protocol === "torrent";
 
   return (
     <tr className="hover:bg-bg-elevated/40 transition-colors group">
-      {/* Source */}
+      {/* Source / Protocol */}
       <td className="px-3 py-2.5 whitespace-nowrap">
-        <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-bg-elevated border border-border text-text-muted uppercase">
-          NZB
+        <span
+          className={clsx(
+            "px-1.5 py-0.5 rounded text-[10px] font-medium bg-bg-elevated border uppercase",
+            isTorrent
+              ? "border-blue-500/40 text-blue-400"
+              : "border-accent/40 text-accent",
+          )}
+        >
+          {isTorrent ? "Torrent" : "NZB"}
         </span>
       </td>
       {/* Age */}
@@ -544,9 +606,26 @@ function SearchResultRow({
       </td>
       {/* Title */}
       <td className="px-3 py-2.5 max-w-xs">
-        <span className="font-mono text-text-bright line-clamp-1" title={release.title}>
-          {release.title}
-        </span>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {isPrelims && (
+            <span className="px-1 py-0.5 rounded text-[10px] font-medium bg-blue-500/15 border border-blue-500/30 text-blue-400 shrink-0">
+              Prelims
+            </span>
+          )}
+          <span className="font-mono text-text-bright line-clamp-1" title={release.title}>
+            {release.title}
+          </span>
+        </div>
+      </td>
+      {/* Quality */}
+      <td className="px-3 py-2.5 whitespace-nowrap">
+        {quality ? (
+          <span className="px-1.5 py-0.5 rounded text-[10px] bg-bg-elevated border border-border text-text-muted font-mono">
+            {quality}
+          </span>
+        ) : (
+          <span className="text-text-dim">—</span>
+        )}
       </td>
       {/* Indexer */}
       <td className="px-3 py-2.5 text-text-muted whitespace-nowrap">{release.indexer_name}</td>
@@ -556,21 +635,14 @@ function SearchResultRow({
       </td>
       {/* Grab */}
       <td className="px-3 py-2.5 text-right whitespace-nowrap">
-        <div className="flex items-center justify-end gap-2">
-          {quality && (
-            <span className="px-1.5 py-0.5 rounded text-[10px] bg-bg-elevated border border-border text-accent">
-              {quality}
-            </span>
-          )}
-          <button
-            className="flex items-center gap-1 px-2.5 py-1 rounded bg-accent text-black text-xs font-medium hover:bg-accent/90 transition-colors disabled:opacity-40"
-            onClick={onGrab}
-            disabled={isGrabbing}
-          >
-            <Download size={11} />
-            {isGrabbing ? "Grabbing…" : "Grab"}
-          </button>
-        </div>
+        <button
+          className="flex items-center gap-1 px-2.5 py-1 rounded bg-accent text-black text-xs font-medium hover:bg-accent/90 transition-colors disabled:opacity-40"
+          onClick={onGrab}
+          disabled={isGrabbing}
+        >
+          <Download size={11} />
+          {isGrabbing ? "Grabbing…" : "Grab"}
+        </button>
       </td>
     </tr>
   );
@@ -678,9 +750,40 @@ function formatBytes(bytes: number): string {
 
 function detectQuality(title: string): string | null {
   const t = title.toUpperCase();
-  if (t.includes("2160P") || t.includes("4K")) return "2160p";
-  if (t.includes("1080P")) return "1080p";
-  if (t.includes("720P")) return "720p";
-  if (t.includes("480P")) return "480p";
+
+  let res = "";
+  if (t.includes("2160P") || t.includes("4K") || t.includes("UHD")) res = "2160p";
+  else if (t.includes("1080P")) res = "1080p";
+  else if (t.includes("720P")) res = "720p";
+  else if (t.includes("480P")) res = "480p";
+
+  let src = "";
+  if (t.includes("WEB-DL") || t.includes("WEBDL") || t.includes("WEB DL")) src = "WEBDL";
+  else if (t.includes("WEBRIP") || t.includes("WEB-RIP") || t.includes("WEB RIP")) src = "WEBRip";
+  else if (t.includes("BLURAY") || t.includes("BLU-RAY") || t.includes("BLU RAY")) src = "Bluray";
+  else if (t.includes("HDTV")) src = "HDTV";
+
+  if (src && res) return `${src}-${res}`;
+  if (res) return res;
+  if (src) return src;
   return null;
+}
+
+const QUALITY_ORDER: Record<string, number> = {
+  "WEBDL-2160p": 0, "WEBRip-2160p": 1, "Bluray-2160p": 2,
+  "WEBDL-1080p": 3, "WEBRip-1080p": 4, "Bluray-1080p": 5, "HDTV-1080p": 6,
+  "WEBDL-720p": 7, "WEBRip-720p": 8, "Bluray-720p": 9, "HDTV-720p": 10,
+  "2160p": 11, "1080p": 12, "720p": 13, "480p": 14,
+};
+
+function sortReleases(releases: SearchRelease[]): SearchRelease[] {
+  return [...releases].sort((a, b) => {
+    const aPrelims = /prelim/i.test(a.title);
+    const bPrelims = /prelim/i.test(b.title);
+    if (aPrelims !== bPrelims) return aPrelims ? 1 : -1;
+    const aQ = QUALITY_ORDER[detectQuality(a.title) ?? ""] ?? 99;
+    const bQ = QUALITY_ORDER[detectQuality(b.title) ?? ""] ?? 99;
+    if (aQ !== bQ) return aQ - bQ;
+    return (b.size_bytes ?? 0) - (a.size_bytes ?? 0);
+  });
 }

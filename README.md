@@ -62,23 +62,27 @@ Fightarr is a purpose-built sibling to Radarr that solves this correctly. It spe
 | Feature | Status |
 |---|---|
 | Scrapes UFC schedule from Wikipedia (PPVs, Fight Nights, On ABC) | ✅ Working |
+| Historical year sync (any year from 2001) + future year pre-load | ✅ Working |
 | Cover art — Wikipedia REST API, zero config, no API key needed | ✅ Working |
-| Newznab / Torznab indexer support | ✅ Working |
+| Newznab / Torznab indexer support + connection test | ✅ Working |
 | Calendar view — next 30 days, grouped by date | ✅ Working |
 | Wanted list — monitored events with no file | ✅ Working |
-| Indexer CRUD via Settings UI | ✅ Working |
+| Indexer CRUD + test button via Settings UI | ✅ Working |
 | Download clients — SABnzbd, NZBGet, qBittorrent, Deluge, Transmission, Real-Debrid | ✅ Working |
 | Download client CRUD + connection test via Settings UI | ✅ Working |
 | Post-processing renamer — Radarr-style Plex folder/file naming | ✅ Working |
 | Hardlink-first library import (copy fallback) | ✅ Working |
 | Plex + Jellyfin library refresh notify | ✅ Working |
-| SABnzbd / NZBGet webhook receiver | ✅ Working |
-| Activity queue + history page | ✅ Working |
+| Activity queue — live progress bars, status badges, auto-refresh | ✅ Working |
+| History page — imported/failed downloads with file paths | ✅ Working |
 | Live DB schema migrations on startup (no Alembic required) | ✅ Working |
-| Query builder — smart search variants per event type | 🔧 In progress |
+| Event detail page — poster, metadata, history, interactive search | ✅ Working |
+| Query builder — PPV by number, Fight Night by sequential number + date fallback, fighter surnames | ✅ Working |
+| Interactive search — quality profiles (WEBDL-1080p), Prelims badge, sorted results | ✅ Working |
+| Search diagnostics — indexer errors and queries tried shown in UI | ✅ Working |
+| Monitor/unmonitor toggle — per-event and bulk unmonitor all | ✅ Working |
 | Release scorer — resolution, codec, size, prelims filter | 🔧 In progress |
-| Quality profiles UI | 📋 Planned |
-| Event detail page with interactive search | 📋 Planned |
+| Quality profiles UI (cutoff model) | 📋 Planned |
 | Discord / Apprise notifications | 📋 Planned |
 | Single-container Docker image for Unraid | 📋 Planned |
 | Unraid Community Applications template | 📋 Planned |

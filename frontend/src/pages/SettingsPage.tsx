@@ -215,6 +215,8 @@ function MediaSection({ settings }: { settings: AppSettings }) {
 function IndexersSection() {
   const qc = useQueryClient();
   const [showAdd, setShowAdd] = useState(false);
+  const [testing, setTesting] = useState<number | null>(null);
+  const [testResult, setTestResult] = useState<Record<number, { ok: boolean; message: string }>>({});
 
   const { data: indexers = [] } = useQuery({
     queryKey: ["indexers"],
@@ -233,6 +235,19 @@ function IndexersSection() {
     mutationFn: (id: number) => api.delete(`/indexer/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["indexers"] }),
   });
+
+  const testIndexer = async (id: number) => {
+    setTesting(id);
+    try {
+      const r = await api.post<{ ok: boolean; message: string }>(`/indexer/${id}/test`);
+      setTestResult((prev) => ({ ...prev, [id]: r }));
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Request failed";
+      setTestResult((prev) => ({ ...prev, [id]: { ok: false, message: msg } }));
+    } finally {
+      setTesting(null);
+    }
+  };
 
   return (
     <section className="card p-4 space-y-3">
@@ -257,29 +272,56 @@ function IndexersSection() {
       )}
 
       <div className="divide-y divide-border">
-        {indexers.map((idx) => (
-          <div key={idx.id} className="py-2.5 flex items-center gap-3">
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-text-bright">{idx.name}</span>
-                <span
-                  className={`text-[10px] px-1.5 py-0.5 rounded font-medium uppercase tracking-wide ${
-                    idx.indexer_type === "torznab"
-                      ? "bg-green-900/40 text-green-300"
-                      : "bg-blue-900/40 text-blue-300"
-                  }`}
+        {indexers.map((idx) => {
+          const tested = testResult[idx.id];
+          return (
+            <div key={idx.id} className="py-2.5 space-y-1">
+              <div className="flex items-center gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm text-text-bright">{idx.name}</span>
+                    <span
+                      className={`text-[10px] px-1.5 py-0.5 rounded font-medium uppercase tracking-wide ${
+                        idx.indexer_type === "torznab"
+                          ? "bg-green-900/40 text-green-300"
+                          : "bg-blue-900/40 text-blue-300"
+                      }`}
+                    >
+                      {idx.indexer_type}
+                    </span>
+                    {tested !== undefined && (
+                      <span
+                        className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                          tested.ok
+                            ? "bg-green-900/40 text-green-300"
+                            : "bg-red-900/40 text-red-400"
+                        }`}
+                      >
+                        {tested.ok ? "Connected" : "Failed"}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-text-muted truncate">{idx.url}</div>
+                </div>
+                <span className="text-xs text-text-muted shrink-0">pri {idx.priority}</span>
+                <button
+                  className="btn"
+                  disabled={testing === idx.id}
+                  onClick={() => testIndexer(idx.id)}
+                  title="Test connection"
                 >
-                  {idx.indexer_type}
-                </span>
+                  <Wifi size={12} className={testing === idx.id ? "animate-pulse" : ""} />
+                </button>
+                <button className="btn" onClick={() => deleteIndexer.mutate(idx.id)}>
+                  <Trash2 size={12} />
+                </button>
               </div>
-              <div className="text-xs text-text-muted truncate">{idx.url}</div>
+              {tested !== undefined && !tested.ok && (
+                <p className="text-xs text-status-missing px-1">{tested.message}</p>
+              )}
             </div>
-            <span className="text-xs text-text-muted shrink-0">pri {idx.priority}</span>
-            <button className="btn" onClick={() => deleteIndexer.mutate(idx.id)}>
-              <Trash2 size={12} />
-            </button>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {showAdd && (

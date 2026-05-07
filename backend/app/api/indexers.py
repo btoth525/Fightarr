@@ -44,6 +44,36 @@ async def create_indexer(
     return obj
 
 
+@router.put("/indexer/{indexer_id}", response_model=IndexerOut)
+async def update_indexer(
+    indexer_id: int,
+    data: IndexerIn,
+    session: AsyncSession = Depends(get_session),
+) -> Indexer:
+    obj = await session.get(Indexer, indexer_id)
+    if obj is None:
+        raise HTTPException(status_code=404, detail="Indexer not found")
+    for field, val in data.model_dump().items():
+        setattr(obj, field, val)
+    await session.commit()
+    await session.refresh(obj)
+    return obj
+
+
+@router.post("/indexer/{indexer_id}/test")
+async def test_indexer(indexer_id: int, session: AsyncSession = Depends(get_session)) -> dict:
+    """Test connectivity to an indexer by calling t=caps."""
+    from app.services.newznab import NewznabClient
+
+    obj = await session.get(Indexer, indexer_id)
+    if obj is None:
+        raise HTTPException(status_code=404, detail="Indexer not found")
+
+    client = NewznabClient(obj.name, obj.url, obj.api_key)
+    ok, message = await client.test_connection()
+    return {"ok": ok, "message": message}
+
+
 @router.delete("/indexer/{indexer_id}", status_code=204)
 async def delete_indexer(indexer_id: int, session: AsyncSession = Depends(get_session)) -> None:
     obj = await session.get(Indexer, indexer_id)

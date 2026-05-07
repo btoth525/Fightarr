@@ -32,6 +32,7 @@ class NewznabRelease:
     indexer_name: str
     pub_date: str | None = None
     guid: str | None = None
+    protocol: str = "nzb"
 
 
 class NewznabError(Exception):
@@ -46,8 +47,27 @@ class NewznabError(Exception):
 class NewznabClient:
     def __init__(self, name: str, base_url: str, api_key: str) -> None:
         self.name = name
-        self.base_url = base_url.rstrip("/")
+        # Normalize: strip trailing slash and any trailing /api the user may have included
+        url = base_url.rstrip("/")
+        if url.endswith("/api"):
+            url = url[:-4]
+        self.base_url = url
         self.api_key = api_key
+
+    async def test_connection(self) -> tuple[bool, str]:
+        """Probe the indexer with t=caps. Returns (ok, message)."""
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                r = await client.get(
+                    f"{self.base_url}/api",
+                    params={"t": "caps", "apikey": self.api_key, "o": "xml"},
+                )
+                r.raise_for_status()
+            return True, "Connected successfully"
+        except httpx.HTTPStatusError as exc:
+            return False, f"HTTP {exc.response.status_code}: {exc.response.text[:200]}"
+        except Exception as exc:
+            return False, str(exc)
 
     async def search(self, query: str, categories: str = "5070,5080") -> list[NewznabRelease]:
         """Search the indexer for *query*. Returns parsed releases.
