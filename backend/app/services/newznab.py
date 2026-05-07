@@ -23,6 +23,16 @@ logger = logging.getLogger(__name__)
 
 _NEWZNAB_NS = "http://www.newznab.com/DTD/2010/feeds/attributes/"
 
+# Some indexers fingerprint client user-agents; identify as a known *arr-style app.
+_USER_AGENT = "Fightarr/0.1.0"
+
+
+def _redact(url: str) -> str:
+    """Redact apikey query param so URLs can be safely shown in UI/logs."""
+    import re
+
+    return re.sub(r"(apikey=)[^&]+", r"\1***", url)
+
 
 @dataclass
 class NewznabRelease:
@@ -55,38 +65,63 @@ class NewznabClient:
         self.api_key = api_key
 
     async def test_connection(self) -> tuple[bool, str]:
-        """Probe the indexer with t=caps. Returns (ok, message)."""
+        """Probe the indexer with t=caps then a real q=ufc search.
+
+        Many indexers will reply 200 to caps even with bad keys; verifying that a
+        real search round-trips ensures the apikey + categories actually work.
+        """
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with httpx.AsyncClient(
+                timeout=10.0, headers={"User-Agent": _USER_AGENT}
+            ) as client:
                 r = await client.get(
                     f"{self.base_url}/api",
                     params={"t": "caps", "apikey": self.api_key, "o": "xml"},
                 )
                 r.raise_for_status()
-            return True, "Connected successfully"
+                # Real search probe — confirms apikey works for actual queries
+                r2 = await client.get(
+                    f"{self.base_url}/api",
+                    params={"t": "search", "q": "ufc", "apikey": self.api_key, "o": "xml"},
+                )
+                r2.raise_for_status()
+                releases = parse_search_response(r2.content, self.name)
+            return True, f"Connected — search probe returned {len(releases)} result(s) for 'ufc'"
+        except NewznabError as exc:
+            return False, f"Indexer error {exc.code}: {exc.description}"
         except httpx.HTTPStatusError as exc:
             return False, f"HTTP {exc.response.status_code}: {exc.response.text[:200]}"
         except Exception as exc:
             return False, str(exc)
 
-    async def search(self, query: str, categories: str = "5070,5080") -> list[NewznabRelease]:
-        """Search the indexer for *query*. Returns parsed releases.
+    async def search(
+        self, query: str, categories: str = "5070,5080"
+    ) -> tuple[list[NewznabRelease], str]:
+        """Search the indexer for *query*. Returns (releases, redacted_url).
+
+        If categories is empty/None, the cat parameter is omitted entirely so the
+        indexer searches all categories. The redacted URL (apikey hidden) is
+        returned so the caller can surface it for diagnostics.
 
         Raises NewznabError if the indexer returns an API-level error.
         Raises httpx.HTTPStatusError on non-2xx HTTP responses.
         """
-        params = {
+        params: dict[str, str] = {
             "t": "search",
             "q": query,
             "apikey": self.api_key,
-            "cat": categories,
             "o": "xml",
         }
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        if categories:
+            params["cat"] = categories
+
+        async with httpx.AsyncClient(timeout=30.0, headers={"User-Agent": _USER_AGENT}) as client:
             response = await client.get(f"{self.base_url}/api", params=params)
+            redacted_url = _redact(str(response.request.url))
+            logger.info("Newznab GET %s → HTTP %d", redacted_url, response.status_code)
             response.raise_for_status()
 
-        return parse_search_response(response.content, indexer_name=self.name)
+        return parse_search_response(response.content, indexer_name=self.name), redacted_url
 
 
 # ---------------------------------------------------------------------------

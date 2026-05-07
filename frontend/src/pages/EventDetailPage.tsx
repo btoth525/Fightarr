@@ -527,9 +527,12 @@ function InteractiveSearchContent({
             Search details ({queriesTried.length} quer{queriesTried.length !== 1 ? "ies" : "y"})
           </button>
           {showDiag && (
-            <div className="px-4 pb-3 space-y-0.5">
+            <div className="px-4 pb-3 space-y-1">
+              <p className="text-[10px] text-text-dim italic mb-1.5">
+                URLs are shown with apikey redacted. Paste into a browser (with your real apikey) to verify the indexer response.
+              </p>
               {queriesTried.map((q, i) => (
-                <p key={i} className="text-[10px] font-mono text-text-dim">{q}</p>
+                <p key={i} className="text-[10px] font-mono text-text-dim break-all leading-relaxed">{q}</p>
               ))}
             </div>
           )}

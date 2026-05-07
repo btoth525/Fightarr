@@ -66,6 +66,10 @@ async def test_search_calls_correct_endpoint():
     mock_response = MagicMock()
     mock_response.content = xml_bytes
     mock_response.raise_for_status = MagicMock()
+    mock_response.request.url = (
+        "https://example.com/api?t=search&q=UFC+300&apikey=secret-key&o=xml&cat=5070%2C5080"
+    )
+    mock_response.status_code = 200
 
     mock_client = AsyncMock()
     mock_client.get = AsyncMock(return_value=mock_response)
@@ -74,7 +78,7 @@ async def test_search_calls_correct_endpoint():
 
     with patch("app.services.newznab.httpx.AsyncClient", return_value=mock_client):
         client = NewznabClient("MyIndexer", "https://example.com", "secret-key")
-        releases = await client.search("UFC 300", "5070,5080")
+        releases, url = await client.search("UFC 300", "5070,5080")
 
     mock_client.get.assert_called_once_with(
         "https://example.com/api",
@@ -82,9 +86,11 @@ async def test_search_calls_correct_endpoint():
             "t": "search",
             "q": "UFC 300",
             "apikey": "secret-key",
-            "cat": "5070,5080",
             "o": "xml",
+            "cat": "5070,5080",
         },
     )
     assert len(releases) == 2
+    assert "apikey=***" in url
+    assert "secret-key" not in url
     assert releases[0].indexer_name == "MyIndexer"

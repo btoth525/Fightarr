@@ -51,18 +51,42 @@ async def search_event(event_id: int) -> dict:
         protocol = "torrent" if indexer.indexer_type == "torznab" else "nzb"
         client = NewznabClient(indexer.name, indexer.url, indexer.api_key)
         for query in queries:
-            label = f"{indexer.name}: {query!r}"
-            if label not in searched_queries:
-                searched_queries.append(label)
             try:
-                releases = await client.search(query, categories=indexer.categories)
+                releases, url = await client.search(query, categories=indexer.categories)
                 for r in releases:
                     r.protocol = protocol
                 all_releases.extend(releases)
-                logger.info("Indexer %s query %r → %d results", indexer.name, query, len(releases))
+                searched_queries.append(
+                    f"{indexer.name} [{query!r}] cat={indexer.categories or '∅'} → {len(releases)} | {url}"
+                )
+                logger.info(
+                    "Indexer %s query %r cat=%s → %d results",
+                    indexer.name,
+                    query,
+                    indexer.categories,
+                    len(releases),
+                )
+                # Fallback: if nothing came back AND we filtered by categories,
+                # retry the same query with no category filter. Some indexers
+                # categorize UFC content under codes outside our default set.
+                if not releases and indexer.categories:
+                    retry_releases, retry_url = await client.search(query, categories="")
+                    for r in retry_releases:
+                        r.protocol = protocol
+                    all_releases.extend(retry_releases)
+                    searched_queries.append(
+                        f"{indexer.name} [{query!r}] cat=∅ (fallback) → {len(retry_releases)} | {retry_url}"
+                    )
+                    logger.info(
+                        "Indexer %s fallback (no cat) query %r → %d results",
+                        indexer.name,
+                        query,
+                        len(retry_releases),
+                    )
             except Exception as exc:
                 msg = f"{indexer.name} [{query!r}]: {exc}"
                 errors.append(msg)
+                searched_queries.append(f"{indexer.name} [{query!r}] → ERROR: {exc}")
                 logger.warning("Search failed on %s for %r: %s", indexer.name, query, exc)
 
     seen: set[str] = set()
