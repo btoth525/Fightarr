@@ -23,7 +23,7 @@ LABEL org.opencontainers.image.description="UFC event manager for Usenet and Ple
 LABEL org.opencontainers.image.licenses="GPL-3.0"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    nginx supervisor libxml2 libxslt1.1 \
+    nginx supervisor libxml2 libxslt1.1 gosu \
     && rm -rf /var/lib/apt/lists/* \
     && rm -f /etc/nginx/sites-enabled/default
 
@@ -44,15 +44,24 @@ COPY docker/nginx.conf /etc/nginx/conf.d/fightarr.conf
 COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 # Persistent data directories
-RUN mkdir -p /config /media /var/log/supervisor
+RUN mkdir -p /config /downloads /plex /var/log/supervisor
 
-VOLUME ["/config", "/media"]
+VOLUME ["/config", "/downloads", "/plex"]
 
 EXPOSE 7878
 
 ENV FIGHTARR_DB_PATH=/config/fightarr.db \
-    FIGHTARR_MEDIA_ROOT=/media \
+    FIGHTARR_MEDIA_ROOT=/plex \
     FIGHTARR_LOG_LEVEL=INFO \
-    FIGHTARR_CORS_ORIGINS=*
+    FIGHTARR_CORS_ORIGINS=* \
+    PUID=99 \
+    PGID=100 \
+    UMASK=002
 
+# PUID/PGID entrypoint — run as the specified user so written files are owned
+# by the correct Unraid user rather than root.
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["/usr/bin/supervisord", "-n", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

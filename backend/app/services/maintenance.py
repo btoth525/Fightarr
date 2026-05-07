@@ -1,22 +1,23 @@
 """Periodic maintenance jobs scheduled by APScheduler.
 
 These mirror Radarr's background tasks:
-  - cleanup_history       Drop very old completed/failed QueueItems
-  - refresh_poster_cache  Backfill posters for events that don't have one yet
-  - health_check          Probe every enabled indexer + download client and log
-                          any failures so the user sees them in the System page
+  - update_event_statuses  Transition ANNOUNCED/UPCOMING/AIRING → RELEASED/MISSING
+  - cleanup_history        Drop very old completed/failed QueueItems
+  - refresh_poster_cache   Backfill posters for events that don't have one yet
+  - health_check           Probe every enabled indexer + download client and log
+                           any failures so the user sees them in the System page
 """
 
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import delete, select
 
 from app.core.database import AsyncSessionLocal
 from app.models.download_client import DownloadClient
-from app.models.event import Event
+from app.models.event import Event, EventStatus
 from app.models.indexer import Indexer
 from app.models.queue_item import QueueItem, QueueStatus
 
@@ -37,6 +38,57 @@ _last_health: dict = {
 def get_last_health() -> dict:
     """Return the most recent health_check() result for the System page."""
     return _last_health
+
+
+async def update_event_statuses() -> dict:
+    """Transition events through their lifecycle based on today's date.
+
+    Rules (mirrors Radarr movie availability logic):
+      ANNOUNCED / UPCOMING → AIRING   if event_date == today
+      AIRING               → RELEASED if event_date < today and event has a file
+      AIRING               → MISSING  if event_date < today, monitored, no file
+      ANNOUNCED            → UPCOMING if event_date is within the next 7 days
+      RELEASED / MISSING: no file + monitored → stays MISSING (wanted list)
+      DOWNLOADED: already has file → stays DOWNLOADED regardless
+
+    Runs every hour so statuses stay current without hammering the DB.
+    """
+    today = date.today()
+    upcoming_window = today + timedelta(days=7)
+    updated = 0
+
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(Event).where(Event.status != EventStatus.DOWNLOADED))
+        events = list(result.scalars().all())
+
+        for event in events:
+            if not event.event_date:
+                continue
+            old_status = event.status
+
+            if event.event_date == today:
+                event.status = EventStatus.AIRING
+            elif event.event_date < today:
+                if event.file_path:
+                    event.status = EventStatus.DOWNLOADED
+                elif event.monitored:
+                    event.status = EventStatus.MISSING
+                else:
+                    event.status = EventStatus.RELEASED
+            elif event.event_date <= upcoming_window:
+                event.status = EventStatus.UPCOMING
+            else:
+                event.status = EventStatus.ANNOUNCED
+
+            if event.status != old_status:
+                updated += 1
+
+        if updated:
+            await session.commit()
+
+    if updated:
+        logger.info("Status update: transitioned %d events", updated)
+    return {"updated": updated}
 
 
 async def cleanup_history() -> dict:

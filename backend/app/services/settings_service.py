@@ -41,6 +41,8 @@ async def _seed_from_env(session) -> AppSettings:
         jellyfin_host=env.jellyfin_host,
         jellyfin_token=env.jellyfin_token,
         jellyfin_library_id=env.jellyfin_library_id,
+        webhook_url=getattr(env, "webhook_url", ""),
+        webhook_events=getattr(env, "webhook_events", "grab,import,failed"),
     )
     session.add(row)
     await session.commit()

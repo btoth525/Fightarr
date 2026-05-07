@@ -13,6 +13,7 @@ When a download completes:
   7. Notify Plex / Jellyfin if configured.
 """
 
+import contextlib
 import logging
 import os
 import re
@@ -106,10 +107,8 @@ async def import_download(session: AsyncSession, item: QueueItem) -> None:
     folder_name = _build_event_folder_name(event)
     dest_dir = media_root / folder_name
     dest_dir.mkdir(parents=True, exist_ok=True)
-    try:
+    with contextlib.suppress(OSError):
         os.chmod(dest_dir, 0o775)
-    except OSError:
-        pass
 
     dest_file = dest_dir / _build_filename(folder_name, quality, video_file.suffix)
     _move_file(video_file, dest_file, use_hardlinks=db_settings.use_hardlinks)
@@ -234,10 +233,8 @@ def _move_file(src: Path, dest: Path, *, use_hardlinks: bool) -> None:
             shutil.move(str(src), dest)
     else:
         shutil.move(str(src), dest)
-    try:
+    with contextlib.suppress(OSError):
         os.chmod(dest, 0o664)
-    except OSError:
-        pass
 
 
 async def _save_poster(event: Event, dest_dir: Path) -> None:

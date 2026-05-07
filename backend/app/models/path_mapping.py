@@ -14,7 +14,7 @@ If you use the TRaSH-Guides /data layout (recommended) you DO NOT need any
 path mappings — the paths are identical inside both containers.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
@@ -38,4 +38,4 @@ class PathMapping(Base):
     local_path: Mapped[str] = mapped_column(String(500))
     # The path as Fightarr can see it on its filesystem.
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))

@@ -4,7 +4,7 @@ Supports NZB clients (SABnzbd, NZBGet), torrent clients (qBittorrent,
 Deluge, Transmission), and Real-Debrid for premium link resolution.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 
 from sqlalchemy import DateTime, Integer, String
@@ -56,9 +56,9 @@ class DownloadClient(Base):
     enabled: Mapped[bool] = mapped_column(default=True)
     priority: Mapped[int] = mapped_column(Integer, default=25)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC)
     )
 
     def __repr__(self) -> str:

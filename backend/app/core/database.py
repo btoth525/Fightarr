@@ -63,7 +63,8 @@ def _migrate_columns(conn) -> None:
                 elif col.nullable:
                     default_clause = " DEFAULT NULL"
                 ddl = (
-                    f"ALTER TABLE {table.name} " f"ADD COLUMN {col.name} {col_type}{default_clause}"
+                    f"ALTER TABLE {table.name} "
+                    f"ADD COLUMN {col.name} {col_type}{default_clause} {nullable}"
                 )
                 logger.info("Migrating: %s", ddl)
                 conn.execute(text(ddl))

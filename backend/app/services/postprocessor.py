@@ -13,11 +13,12 @@ Pipeline:
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import re
 import shutil
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
@@ -90,22 +91,27 @@ def _clean(s: str) -> str:
 
 def build_folder_name(event: Event) -> str:
     """Radarr-style folder: "UFC 300 - Pereira vs Hill (2024-04-13)"."""
+    date_str = event.event_date.strftime("%Y-%m-%d") if event.event_date else "Unknown"
     if event.event_number:
         base = f"UFC {event.event_number}"
     else:
-        base = f"UFC Fight Night {event.event_date.strftime('%Y-%m-%d')}"
+        base = f"UFC Fight Night {date_str}"
 
     if event.main_event:
         base += f" - {event.main_event}"
 
-    base += f" ({event.event_date.strftime('%Y-%m-%d')})"
+    base += f" ({date_str})"
     return _clean(base)
 
 
 def build_file_name(event: Event, quality: str, extension: str) -> str:
     """Radarr-style file: "UFC 300 - Pereira vs Hill (2024-04-13) [WEBDL-1080p].mkv"."""
     folder = build_folder_name(event)
-    tag = quality.replace(" ", "-").replace("WEB-DL", "WEBDL") if quality else ""
+    tag = (
+        quality.replace(" ", "-").replace("WEB-DL", "WEBDL")
+        if quality and quality != "Unknown"
+        else ""
+    )
     name = f"{folder} [{tag}]" if tag else folder
     ext = extension if extension.startswith(".") else f".{extension}"
     return _clean(name) + ext
@@ -158,12 +164,17 @@ def import_file(
         try:
             os.link(video, dest_path)
             logger.info("Hardlinked %s → %s", video, dest_path)
-            return str(dest_path)
         except OSError as e:
-            logger.debug("Hardlink failed (%s), falling back to copy", e)
+            logger.debug("Hardlink failed (%s), falling back to move", e)
+            shutil.move(str(video), dest_path)
+            logger.info("Moved %s → %s", video, dest_path)
+    else:
+        shutil.move(str(video), dest_path)
+        logger.info("Moved %s → %s", video, dest_path)
 
-    shutil.copy2(video, dest_path)
-    logger.info("Copied %s → %s", video, dest_path)
+    with contextlib.suppress(OSError):
+        os.chmod(dest_path, 0o664)
+        os.chmod(dest_dir, 0o775)
     return str(dest_path)
 
 
@@ -244,7 +255,7 @@ async def run_postprocess(
     if queue_item:
         queue_item.status = QueueStatus.IMPORTED
         queue_item.download_path = dest_path
-        queue_item.completed_at = datetime.utcnow()
+        queue_item.completed_at = datetime.now(UTC)
 
     await session.commit()
     logger.info("Imported %s → %s [%s]", event.slug, dest_path, quality)

@@ -45,9 +45,20 @@ def start_scheduler() -> None:
         cleanup_history,
         health_check,
         refresh_poster_cache,
+        update_event_statuses,
     )
     from app.services.queue_monitor import poll_queue
     from app.services.schedule_sync import sync_schedule
+
+    # Event status lifecycle — every hour
+    _scheduler.add_job(
+        update_event_statuses,
+        trigger=IntervalTrigger(hours=1),
+        id="update_event_statuses",
+        name="Update event statuses (announced/upcoming/airing/missing)",
+        replace_existing=True,
+        next_run_time=_now_plus(10),  # Run quickly on boot so UI shows correct statuses
+    )
 
     # Wikipedia schedule refresh — every 6 hours
     _scheduler.add_job(

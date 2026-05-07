@@ -1,6 +1,6 @@
 """Queue item model — tracks downloads currently in SABnzbd."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
@@ -50,5 +50,5 @@ class QueueItem(Base):
     # triggers blocklist + auto-search for an alternative release).
     import_attempts: Mapped[int] = mapped_column(Integer, default=0)
 
-    grabbed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    grabbed_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

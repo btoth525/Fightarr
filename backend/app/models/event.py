@@ -5,7 +5,7 @@ UFC on ABC 6, etc. Each event has a date, a venue, a main event, and a
 status that tracks its lifecycle through the system.
 """
 
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from enum import Enum
 
 from sqlalchemy import Date, DateTime, Integer, String, Text
@@ -69,7 +69,7 @@ class Event(Base):
     status: Mapped[EventStatus] = mapped_column(
         String(32), default=EventStatus.ANNOUNCED, index=True
     )
-    monitored: Mapped[bool] = mapped_column(default=True)
+    monitored: Mapped[bool] = mapped_column(default=True, index=True)
 
     # File info (once downloaded)
     file_path: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -77,9 +77,9 @@ class Event(Base):
     # e.g. "1080p WEB-DL"
 
     # Bookkeeping
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC)
     )
 
     # Source tracking — where did we learn about this event?

@@ -1,3 +1,5 @@
+# Development compose — hot-reload backend + Vite frontend.
+# For production use the root Dockerfile (single-container nginx+uvicorn).
 services:
   backend:
     build:
@@ -8,9 +10,9 @@ services:
       - "7878:7878"
     volumes:
       - ./backend:/app
-      - fightarr-data:/data
+      - fightarr-config:/config
     environment:
-      - FIGHTARR_DB_PATH=/data/fightarr.db
+      - FIGHTARR_DB_PATH=/config/fightarr.db
       - FIGHTARR_LOG_LEVEL=INFO
     restart: unless-stopped
 
@@ -25,10 +27,12 @@ services:
       - ./frontend:/app
       - /app/node_modules
     environment:
-      - VITE_API_BASE=http://localhost:7878
+      # Inter-container URL — "backend" resolves via Docker's internal DNS.
+      # localhost would point to the frontend container itself, not the backend.
+      - VITE_API_BASE=http://backend:7878
     depends_on:
       - backend
     restart: unless-stopped
 
 volumes:
-  fightarr-data:
+  fightarr-config:

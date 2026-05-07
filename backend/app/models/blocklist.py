@@ -6,7 +6,7 @@ auto-search run filters out anything matching by URL or title so we don't grab
 the same broken release in an infinite loop. Mirrors Radarr's blocklist.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
@@ -27,4 +27,4 @@ class BlocklistEntry(Base):
     indexer_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    blocked_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    blocked_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))

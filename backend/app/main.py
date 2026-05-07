@@ -51,12 +51,17 @@ async def _startup_sync() -> None:
         logger.warning("Startup sync failed (non-fatal): %s", exc)
 
 
+_background_tasks: set[asyncio.Task] = set()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Run on startup and shutdown."""
     await init_db()
     start_scheduler()
-    asyncio.create_task(_startup_sync())
+    task = asyncio.create_task(_startup_sync())
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
     yield
     stop_scheduler()
 
