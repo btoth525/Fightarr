@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO, differenceInDays } from "date-fns";
+import { toast } from "sonner";
 import {
   RefreshCw,
   Search,
@@ -14,6 +15,7 @@ import {
   HardDrive,
   Download,
   AlertTriangle,
+  Zap,
 } from "lucide-react";
 import clsx from "clsx";
 
@@ -70,15 +72,53 @@ export default function EventDetailPage() {
   const toggleMonitored = useMutation({
     mutationFn: () =>
       api.put<Event>(`/event/${eventId}`, { monitored: !event?.monitored }),
-    onSuccess: () => {
+    onSuccess: (updated) => {
       queryClient.invalidateQueries({ queryKey: ["event", eventId] });
       queryClient.invalidateQueries({ queryKey: ["events"] });
+      queryClient.invalidateQueries({ queryKey: ["wanted"] });
+      if (updated.monitored && !updated.file_path) {
+        toast.success("Monitoring enabled", {
+          description: "Auto-search started in the background.",
+        });
+      } else {
+        toast.success(updated.monitored ? "Monitoring enabled" : "Monitoring disabled");
+      }
     },
+    onError: () => toast.error("Could not update monitor status"),
   });
 
   const refreshMetadata = useMutation({
     mutationFn: () => api.post<Event>(`/event/${eventId}/refresh-metadata`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["event", eventId] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["event", eventId] });
+      toast.success("Metadata refreshed");
+    },
+    onError: () => toast.error("Refresh failed"),
+  });
+
+  const autoSearch = useMutation({
+    mutationFn: () =>
+      api.post<{ status: string; reason?: string; download_client?: string }>(
+        `/event/${eventId}/auto-search`,
+      ),
+    onSuccess: (data) => {
+      if (data.status === "grabbed") {
+        toast.success("Auto-grabbed best release", {
+          description: `Sent to ${data.download_client}`,
+        });
+        queryClient.invalidateQueries({ queryKey: ["event", eventId] });
+        queryClient.invalidateQueries({ queryKey: ["event-history", eventId] });
+        queryClient.invalidateQueries({ queryKey: ["queue"] });
+      } else {
+        toast.warning("No grab", {
+          description: data.reason ?? "No qualifying release found",
+        });
+      }
+    },
+    onError: (err) =>
+      toast.error("Auto-search failed", {
+        description: err instanceof Error ? err.message : undefined,
+      }),
   });
 
   const doSearch = useMutation({
@@ -100,18 +140,27 @@ export default function EventDetailPage() {
 
   const grab = useMutation({
     mutationFn: (release: SearchRelease) =>
-      api.post(`/event/${eventId}/grab`, {
+      api.post<{ download_client: string; job_id: string }>(`/event/${eventId}/grab`, {
         nzb_url: release.nzb_url,
         release_title: release.title,
         size_bytes: release.size_bytes,
         indexer_name: release.indexer_name,
         protocol: release.protocol,
       }),
-    onSuccess: () => {
+    onSuccess: (data, release) => {
       queryClient.invalidateQueries({ queryKey: ["event", eventId] });
       queryClient.invalidateQueries({ queryKey: ["event-history", eventId] });
+      queryClient.invalidateQueries({ queryKey: ["queue"] });
       setIsSearchOpen(false);
       setIsHistoryOpen(true);
+      toast.success("Release grabbed", {
+        description: `${release.title.substring(0, 60)}${release.title.length > 60 ? "…" : ""} → ${data.download_client}`,
+      });
+    },
+    onError: (err) => {
+      toast.error("Grab failed", {
+        description: err instanceof Error ? err.message : "Unknown error",
+      });
     },
   });
 
@@ -158,6 +207,12 @@ export default function EventDetailPage() {
             icon={<Search size={14} />}
             label="Interactive Search"
             onClick={handleOpenSearch}
+          />
+          <ToolbarBtn
+            icon={<Zap size={14} className={autoSearch.isPending ? "animate-pulse" : ""} />}
+            label={autoSearch.isPending ? "Auto-Searching…" : "Auto-Search"}
+            onClick={() => autoSearch.mutate()}
+            disabled={autoSearch.isPending}
           />
           <div className="w-px h-5 bg-border mx-1" />
           <ToolbarBtn

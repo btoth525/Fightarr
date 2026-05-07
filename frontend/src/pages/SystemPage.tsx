@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Play, Download, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { toast } from "sonner";
 
 import { api } from "../api/client";
 import type { ScheduledTask } from "../api/types";
@@ -60,28 +61,48 @@ export default function SystemPage() {
   const runNow = useMutation({
     mutationFn: (jobId: string) =>
       api.post(`/system/tasks/${jobId}/run-now`),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["system-tasks"] }),
+    onSuccess: (_data, jobId) => {
+      queryClient.invalidateQueries({ queryKey: ["system-tasks"] });
+      toast.success(`Triggered: ${jobId}`, {
+        description: "Job queued to run immediately.",
+      });
+      // Health check refreshes the cached health, so refetch shortly after
+      if (jobId === "health_check") {
+        setTimeout(
+          () => queryClient.invalidateQueries({ queryKey: ["system-health"] }),
+          3000,
+        );
+      }
+    },
+    onError: (err) =>
+      toast.error("Could not trigger task", {
+        description: err instanceof Error ? err.message : undefined,
+      }),
   });
 
   const syncYears = useMutation({
     mutationFn: (vars: { from_year: number; to_year: number }) =>
       api.post<{ events_synced: number; years: number[] }>("/command/sync-years", vars),
     onSuccess: (data) => {
-      setSyncResult(
-        `Synced ${data.events_synced} events across ${data.years.length} year(s).`
-      );
+      const msg = `Synced ${data.events_synced} events across ${data.years.length} year(s).`;
+      setSyncResult(msg);
+      toast.success("Wikipedia sync complete", { description: msg });
       queryClient.invalidateQueries({ queryKey: ["events"] });
     },
-    onError: () => setSyncResult("Sync failed — check logs."),
+    onError: () => {
+      setSyncResult("Sync failed — check logs.");
+      toast.error("Wikipedia sync failed");
+    },
   });
 
   const unmonitorAll = useMutation({
     mutationFn: () => api.post("/command/unmonitor-all"),
     onSuccess: () => {
       setSyncResult("All events set to unmonitored.");
+      toast.success("All events unmonitored");
       queryClient.invalidateQueries({ queryKey: ["events"] });
     },
+    onError: () => toast.error("Unmonitor all failed"),
   });
 
   function applyPreset(from: number, to: number) {

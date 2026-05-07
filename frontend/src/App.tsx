@@ -1,4 +1,5 @@
 import { Routes, Route, Navigate } from "react-router-dom";
+import { Toaster } from "sonner";
 
 import Sidebar from "./components/Sidebar";
 import TopBar from "./components/TopBar";
@@ -29,6 +30,17 @@ export default function App() {
           </Routes>
         </main>
       </div>
+      <Toaster
+        position="bottom-right"
+        theme="dark"
+        toastOptions={{
+          style: {
+            background: "#1a1d24",
+            border: "1px solid #2a2f3a",
+            color: "#e8e8ea",
+          },
+        }}
+      />
     </div>
   );
 }

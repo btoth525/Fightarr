@@ -17,7 +17,16 @@ async function request<T>(
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) {
-    throw new Error(`${res.status} ${res.statusText}`);
+    // FastAPI errors come back as { detail: "..." } — surface that text
+    // so toasts and error UIs show the real reason instead of "400 Bad Request".
+    let detail = "";
+    try {
+      const data = await res.json();
+      detail = typeof data?.detail === "string" ? data.detail : JSON.stringify(data);
+    } catch {
+      detail = res.statusText;
+    }
+    throw new Error(detail || `${res.status} ${res.statusText}`);
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;

@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Search, Image, CheckSquare, X } from "lucide-react";
+import { Search, Image, CheckSquare, X, Zap } from "lucide-react";
+import { toast } from "sonner";
 
 import { api } from "../api/client";
 import type { Event } from "../api/types";
@@ -24,12 +25,59 @@ export default function EventsPage() {
   const toggleMonitored = useMutation({
     mutationFn: (event: Event) =>
       api.put<Event>(`/event/${event.id}`, { monitored: !event.monitored }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["events"] }),
+    onSuccess: (updated) => {
+      queryClient.invalidateQueries({ queryKey: ["events"] });
+      queryClient.invalidateQueries({ queryKey: ["wanted"] });
+      if (updated.monitored && !updated.file_path) {
+        toast.success(`Monitoring ${updated.title}`, {
+          description: "Searching indexers in background…",
+        });
+      } else {
+        toast.success(updated.monitored ? `Monitoring ${updated.title}` : `Unmonitored ${updated.title}`);
+      }
+    },
+    onError: (err) => {
+      toast.error("Could not update monitor status", {
+        description: err instanceof Error ? err.message : "Unknown error",
+      });
+    },
   });
 
   const refreshMetadata = useMutation({
-    mutationFn: () => api.post("/command/refresh-metadata"),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["events"] }),
+    mutationFn: () => api.post<{ updated: number; skipped: number }>("/command/refresh-metadata"),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["events"] });
+      toast.success("Poster art refresh complete", {
+        description: `${data.updated} updated, ${data.skipped} skipped.`,
+      });
+    },
+    onError: () => toast.error("Could not refresh poster art"),
+  });
+
+  const bulkMonitor = useMutation({
+    mutationFn: (vars: { ids: number[]; monitored: boolean; search: boolean }) =>
+      api.post<{ updated: number; searches_queued: number }>("/command/bulk-monitor", {
+        event_ids: vars.ids,
+        monitored: vars.monitored,
+        search: vars.search,
+      }),
+    onSuccess: (data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["events"] });
+      queryClient.invalidateQueries({ queryKey: ["wanted"] });
+      if (vars.monitored && data.searches_queued > 0) {
+        toast.success(`Monitoring ${data.updated} events`, {
+          description: `Auto-search queued for ${data.searches_queued} aired event${data.searches_queued !== 1 ? "s" : ""}.`,
+        });
+      } else {
+        toast.success(
+          vars.monitored
+            ? `Monitoring ${data.updated} events`
+            : `Unmonitored ${data.updated} events`,
+        );
+      }
+      clearSelection();
+    },
+    onError: () => toast.error("Bulk action failed"),
   });
 
   const filtered = events.filter((e) => {
@@ -57,13 +105,8 @@ export default function EventsPage() {
     setSelected(new Set());
   }
 
-  async function bulkSetMonitored(monitored: boolean) {
-    const targets = events.filter((e) => selected.has(e.id));
-    await Promise.all(
-      targets.map((e) => api.put(`/event/${e.id}`, { monitored }))
-    );
-    queryClient.invalidateQueries({ queryKey: ["events"] });
-    clearSelection();
+  function bulkSetMonitored(monitored: boolean, search: boolean = false) {
+    bulkMonitor.mutate({ ids: Array.from(selected), monitored, search });
   }
 
   return (
@@ -165,14 +208,25 @@ export default function EventsPage() {
           <button
             className="text-sm text-accent hover:text-accent/80 font-medium"
             onClick={() => bulkSetMonitored(true)}
+            disabled={bulkMonitor.isPending}
           >
             Monitor
           </button>
           <button
             className="text-sm text-text hover:text-text-bright font-medium"
             onClick={() => bulkSetMonitored(false)}
+            disabled={bulkMonitor.isPending}
           >
             Unmonitor
+          </button>
+          <button
+            className="text-sm text-accent hover:text-accent/80 font-medium flex items-center gap-1"
+            onClick={() => bulkSetMonitored(true, true)}
+            disabled={bulkMonitor.isPending}
+            title="Monitor + auto-search the best release for each"
+          >
+            <Zap size={12} />
+            Monitor & Search
           </button>
           <div className="w-px h-4 bg-border" />
           <button

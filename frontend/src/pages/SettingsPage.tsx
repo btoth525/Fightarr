@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
 import { Plus, Trash2, Wifi, Film, HardDrive, Link2, Save, Check, X } from "lucide-react";
+import { toast } from "sonner";
 
 import { api } from "../api/client";
 import type { DownloadClient, DownloadClientType, Indexer, IndexerType } from "../api/types";
@@ -238,12 +239,19 @@ function IndexersSection() {
 
   const testIndexer = async (id: number) => {
     setTesting(id);
+    const ix = indexers.find((i) => i.id === id);
     try {
       const r = await api.post<{ ok: boolean; message: string }>(`/indexer/${id}/test`);
       setTestResult((prev) => ({ ...prev, [id]: r }));
+      if (r.ok) {
+        toast.success(`${ix?.name ?? "Indexer"} connected`, { description: r.message });
+      } else {
+        toast.error(`${ix?.name ?? "Indexer"} failed`, { description: r.message });
+      }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Request failed";
       setTestResult((prev) => ({ ...prev, [id]: { ok: false, message: msg } }));
+      toast.error(`${ix?.name ?? "Indexer"} unreachable`, { description: msg });
     } finally {
       setTesting(null);
     }
@@ -426,9 +434,20 @@ function DownloadClientsSection() {
 
   const testClient = async (id: number) => {
     setTesting(id);
+    const dc = clients.find((c) => c.id === id);
     try {
       const result = await api.post<{ success: boolean }>(`/downloadclient/${id}/test`);
       setTestResult((prev) => ({ ...prev, [id]: result.success }));
+      if (result.success) {
+        toast.success(`${dc?.name ?? "Client"} connected`);
+      } else {
+        toast.error(`${dc?.name ?? "Client"} connection failed`);
+      }
+    } catch (e: unknown) {
+      setTestResult((prev) => ({ ...prev, [id]: false }));
+      toast.error(`${dc?.name ?? "Client"} unreachable`, {
+        description: e instanceof Error ? e.message : undefined,
+      });
     } finally {
       setTesting(null);
     }

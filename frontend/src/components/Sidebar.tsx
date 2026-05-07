@@ -1,4 +1,5 @@
 import { NavLink } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import {
   Swords,
   Calendar,
@@ -6,21 +7,50 @@ import {
   Search,
   Settings,
   Server,
+  AlertTriangle,
 } from "lucide-react";
 import clsx from "clsx";
 
+import { api } from "../api/client";
+import type { Event, QueueItem } from "../api/types";
+
+interface SystemHealth {
+  failures: { kind: string; name: string; message: string }[];
+}
+
 const logoUrl = "/logo.svg";
 
-const navItems = [
-  { to: "/events", label: "Events", icon: Swords },
-  { to: "/calendar", label: "Calendar", icon: Calendar },
-  { to: "/activity", label: "Activity", icon: Activity },
-  { to: "/wanted", label: "Wanted", icon: Search },
-  { to: "/settings", label: "Settings", icon: Settings },
-  { to: "/system", label: "System", icon: Server },
-];
-
 export default function Sidebar() {
+  // Live counts for badges (Radarr-style at-a-glance state)
+  const { data: queue = [] } = useQuery({
+    queryKey: ["queue"],
+    queryFn: () => api.get<QueueItem[]>("/queue"),
+    refetchInterval: 10_000,
+  });
+  const { data: wanted = [] } = useQuery({
+    queryKey: ["wanted"],
+    queryFn: () => api.get<Event[]>("/wanted/missing"),
+    refetchInterval: 30_000,
+  });
+  const { data: health } = useQuery({
+    queryKey: ["system-health"],
+    queryFn: () => api.get<SystemHealth>("/system/health"),
+    refetchInterval: 60_000,
+  });
+
+  const queueCount = queue.length;
+  const wantedCount = wanted.length;
+  const healthFailures = health?.failures.length ?? 0;
+
+  const navItems = [
+    { to: "/events", label: "Events", icon: Swords },
+    { to: "/calendar", label: "Calendar", icon: Calendar },
+    { to: "/activity", label: "Activity", icon: Activity, count: queueCount },
+    { to: "/wanted", label: "Wanted", icon: Search, count: wantedCount },
+    { to: "/settings", label: "Settings", icon: Settings },
+    { to: "/system", label: "System", icon: Server, alert: healthFailures > 0 },
+  ];
+
   return (
     <aside className="w-52 shrink-0 bg-bg-panel border-r border-border flex flex-col">
       <div className="px-4 py-5 border-b border-border">
@@ -33,7 +63,7 @@ export default function Sidebar() {
       </div>
 
       <nav className="flex-1 px-2 py-3 space-y-0.5">
-        {navItems.map(({ to, label, icon: Icon }) => (
+        {navItems.map(({ to, label, icon: Icon, count, alert }) => (
           <NavLink
             key={to}
             to={to}
@@ -47,7 +77,15 @@ export default function Sidebar() {
             }
           >
             <Icon size={16} />
-            <span>{label}</span>
+            <span className="flex-1">{label}</span>
+            {count !== undefined && count > 0 && (
+              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-accent/20 text-accent min-w-[18px] text-center">
+                {count}
+              </span>
+            )}
+            {alert && (
+              <AlertTriangle size={13} className="text-status-missing" aria-label="Health issue" />
+            )}
           </NavLink>
         ))}
       </nav>
