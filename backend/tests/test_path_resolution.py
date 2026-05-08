@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -81,3 +81,51 @@ async def test_auto_discover_prefers_longest_match(fake_mounts):
     # /downloads matches the full /complete/UFC 327 suffix → wins
     assert "downloads" in resolved
     assert resolved.endswith(os.path.join("complete", "UFC 327"))
+
+
+@pytest.mark.asyncio
+async def test_persist_auto_mapping_uses_caller_session():
+    """_persist_auto_mapping must reuse the provided session, not open a new one.
+
+    Opening a second AsyncSessionLocal while the caller already holds one causes
+    'database is locked' on SQLite. This test verifies we never touch
+    AsyncSessionLocal inside _persist_auto_mapping.
+    """
+    from app.models.path_mapping import PathMapping
+
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = None
+
+    mock_session = AsyncMock()
+    mock_session.execute = AsyncMock(return_value=mock_result)
+    mock_session.add = MagicMock()
+    mock_session.flush = AsyncMock()
+
+    with patch("app.core.database.AsyncSessionLocal") as mock_local:
+        await importer._persist_auto_mapping(mock_session, "/data/", "/downloads/")
+        mock_local.assert_not_called()
+
+    mock_session.add.assert_called_once()
+    added: PathMapping = mock_session.add.call_args[0][0]
+    assert added.remote_path == "/data/"
+    assert added.local_path == "/downloads/"
+    assert added.host == "auto-discovered"
+    mock_session.flush.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_persist_auto_mapping_skips_duplicate():
+    """_persist_auto_mapping is a no-op if the mapping already exists."""
+    from app.models.path_mapping import PathMapping
+
+    existing_mapping = PathMapping(host="auto-discovered", remote_path="/data/", local_path="/downloads/")
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = existing_mapping
+
+    mock_session = AsyncMock()
+    mock_session.execute = AsyncMock(return_value=mock_result)
+    mock_session.add = MagicMock()
+
+    await importer._persist_auto_mapping(mock_session, "/data/", "/downloads/")
+
+    mock_session.add.assert_not_called()

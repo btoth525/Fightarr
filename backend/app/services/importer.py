@@ -117,27 +117,31 @@ async def _auto_discover_path(reported_path: str) -> tuple[str, str, str] | None
     return None
 
 
-async def _persist_auto_mapping(remote_prefix: str, local_prefix: str) -> None:
-    """Save an auto-discovered PathMapping so subsequent imports are instant."""
+async def _persist_auto_mapping(
+    session: AsyncSession, remote_prefix: str, local_prefix: str
+) -> None:
+    """Save an auto-discovered PathMapping so subsequent imports are instant.
+
+    Reuses the caller's session to avoid opening a second connection to the
+    SQLite file — two concurrent writers cause 'database is locked'.
+    """
     from sqlalchemy import select
 
-    from app.core.database import AsyncSessionLocal
     from app.models.path_mapping import PathMapping
 
-    async with AsyncSessionLocal() as session:
-        existing = await session.execute(
-            select(PathMapping).where(PathMapping.remote_path == remote_prefix)
+    existing = await session.execute(
+        select(PathMapping).where(PathMapping.remote_path == remote_prefix)
+    )
+    if existing.scalar_one_or_none() is not None:
+        return
+    session.add(
+        PathMapping(
+            host="auto-discovered",
+            remote_path=remote_prefix,
+            local_path=local_prefix,
         )
-        if existing.scalar_one_or_none() is not None:
-            return
-        session.add(
-            PathMapping(
-                host="auto-discovered",
-                remote_path=remote_prefix,
-                local_path=local_prefix,
-            )
-        )
-        await session.commit()
+    )
+    await session.flush()
     logger.info(
         "Auto-created PathMapping %r → %r (no manual setup needed)",
         remote_prefix,
@@ -179,7 +183,7 @@ async def import_download(session: AsyncSession, item: QueueItem) -> None:
                 resolved,
             )
             translated_path = resolved
-            await _persist_auto_mapping(remote_prefix, local_prefix)
+            await _persist_auto_mapping(session, remote_prefix, local_prefix)
 
     video_file = _find_video_file(translated_path)
     if video_file is None:
@@ -188,9 +192,10 @@ async def import_download(session: AsyncSession, item: QueueItem) -> None:
 
         root = _P(translated_path) if translated_path else None
         if root is None or not root.exists():
-            tried_roots = ", ".join(
-                r for r in _PROBE_ROOTS if _P(r).exists()
-            ) or "none of the standard mount points"
+            tried_roots = (
+                ", ".join(r for r in _PROBE_ROOTS if _P(r).exists())
+                or "none of the standard mount points"
+            )
             raise FileNotFoundError(
                 f"Download path {translated_path!r} not visible to Fightarr. "
                 f"Auto-discovery scanned: {tried_roots}. Make sure the host "

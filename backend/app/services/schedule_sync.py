@@ -38,7 +38,9 @@ async def sync_schedule(years: list[int] | None = None) -> int:
             scraped = await fetch_year(year)
             all_scraped.extend(scraped)
         except Exception as e:
-            logger.warning("Failed to fetch %d_in_UFC: %s", year, e)
+            # Next year's Wikipedia page often doesn't exist yet — not worth a WARNING
+            level = logger.debug if year > date.today().year else logger.warning
+            level("Failed to fetch %d_in_UFC: %s", year, e)
             continue
 
     if not all_scraped:
