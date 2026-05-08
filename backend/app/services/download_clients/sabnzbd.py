@@ -89,7 +89,17 @@ class SABnzbdClient:
         for slot in data.get("history", {}).get("slots", []):
             if slot.get("nzo_id") == job_id:
                 raw_status = slot.get("status", "").lower()
-                status = "completed" if raw_status == "completed" else "failed"
+                # SAB post-processing goes through several transient states
+                # (Extracting, Moving, Running) before landing on Completed or
+                # Failed. Treat anything that isn't a terminal state as "still
+                # in progress" so we don't falsely fail a good download.
+                if raw_status == "completed":
+                    status = "completed"
+                elif raw_status in ("failed", "bad"):
+                    status = "failed"
+                else:
+                    # Still extracting / moving / running post-proc — check again next poll
+                    return None
                 return {
                     "id": job_id,
                     "name": slot.get("name", ""),
