@@ -115,3 +115,39 @@ async def remove_from_queue(
     await session.delete(item)
     await session.commit()
     return {"status": "removed"}
+
+
+@router.post("/queue/{item_id}/retry")
+async def retry_import(
+    item_id: int,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Re-run the import pipeline for a FAILED queue item.
+
+    Use after fixing a path mapping or download client config so a stuck
+    download can be imported without re-grabbing it from the indexer.
+    """
+    from app.services.importer import import_download
+
+    item = await session.get(QueueItem, item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Queue item not found")
+
+    if item.status not in (QueueStatus.FAILED, QueueStatus.COMPLETED):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot retry from status '{item.status.value}'",
+        )
+
+    item.status = QueueStatus.COMPLETED
+    item.import_attempts = 0
+    item.error_message = None
+    await session.commit()
+
+    try:
+        await import_download(session, item)
+        return {"status": "imported", "id": item_id}
+    except FileNotFoundError as exc:
+        return {"status": "pending", "message": str(exc)}
+    except Exception as exc:
+        return {"status": "error", "message": str(exc)}

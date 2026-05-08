@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import PlainTextResponse
 
 from app import __version__
 
@@ -85,3 +86,23 @@ async def system_logs(limit: int = 500, level: str | None = None) -> list[dict]:
     from app.core.log_buffer import get_logs
 
     return get_logs(limit=limit, level=level)
+
+
+@router.get("/system/logs/download")
+async def download_logs() -> PlainTextResponse:
+    """Return the entire in-memory log buffer as a downloadable .log file."""
+    from app.core.log_buffer import get_logs
+
+    items = get_logs(limit=10_000)
+    lines = [
+        f"{i['ts']} {i['level']:<8} {i['logger']:<40} {i['message']}"
+        for i in items
+    ]
+    body = "\n".join(lines) + "\n"
+
+    stamp = datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")
+    return PlainTextResponse(
+        content=body,
+        media_type="text/plain",
+        headers={"Content-Disposition": f'attachment; filename="fightarr-{stamp}.log"'},
+    )

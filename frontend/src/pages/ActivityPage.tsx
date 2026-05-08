@@ -11,6 +11,7 @@ import {
   Loader2,
   PackageCheck,
   Ban,
+  RotateCw,
 } from "lucide-react";
 import clsx from "clsx";
 import { toast } from "sonner";
@@ -116,6 +117,29 @@ export default function ActivityPage() {
     onError: () => toast.error("Failed to delete history entry"),
   });
 
+  const retryImport = useMutation({
+    mutationFn: (id: number) =>
+      api.post<{ status: string; message?: string }>(`/queue/${id}/retry`),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["history"] });
+      queryClient.invalidateQueries({ queryKey: ["queue"] });
+      queryClient.invalidateQueries({ queryKey: ["events"] });
+      if (data.status === "imported") {
+        toast.success("Import succeeded");
+      } else if (data.status === "pending") {
+        toast.warning("Still can't find the file", {
+          description: data.message ?? "Check your path mapping in Settings → Download Clients.",
+        });
+      } else {
+        toast.error("Retry failed", { description: data.message });
+      }
+    },
+    onError: (err) =>
+      toast.error("Retry failed", {
+        description: err instanceof Error ? err.message : undefined,
+      }),
+  });
+
   const removeBlock = useMutation({
     mutationFn: (id: number) => api.delete(`/blocklist/${id}`),
     onSuccess: () => {
@@ -214,6 +238,8 @@ export default function ActivityPage() {
                     key={item.id}
                     item={item}
                     onGoToEvent={() => navigate(`/events/${item.event_id}`)}
+                    onRetry={() => retryImport.mutate(item.id)}
+                    isRetrying={retryImport.isPending && retryImport.variables === item.id}
                     onRemove={() => {
                       if (confirm("Delete this history entry? This cannot be undone.")) {
                         removeHistoryItem.mutate(item.id);
@@ -346,7 +372,7 @@ function TableHeader({ cols }: { cols: "queue" | "history" }) {
           <span className="w-36">Date</span>
           <span className="w-24">Indexer</span>
           <span className="w-24">Status</span>
-          <span className="w-8" />
+          <span className="w-16" />
         </>
       )}
     </div>
@@ -451,14 +477,19 @@ function HistoryRow({
   item,
   onGoToEvent,
   onRemove,
+  onRetry,
+  isRetrying,
 }: {
   item: QueueItem;
   onGoToEvent: () => void;
   onRemove: () => void;
+  onRetry: () => void;
+  isRetrying: boolean;
 }) {
   const ts = item.completed_at ?? item.grabbed_at;
   const dateStr = ts ? format(new Date(ts), "MMM d, yyyy HH:mm") : "—";
   const ago = ts ? timeAgo(ts) : "";
+  const isFailed = item.status === "failed";
 
   return (
     <div className="group hover:bg-bg-elevated transition-colors">
@@ -491,13 +522,25 @@ function HistoryRow({
         </div>
         <span className="w-24 shrink-0 text-sm text-text-muted truncate">{item.indexer_name ?? "—"}</span>
         <div className="w-24 shrink-0"><StatusBadge status={item.status} /></div>
-        <button
-          className="w-8 opacity-0 group-hover:opacity-100 transition-opacity p-1 text-text-dim hover:text-status-missing rounded shrink-0"
-          onClick={onRemove}
-          title="Remove from history"
-        >
-          <Trash2 size={13} />
-        </button>
+        <div className="w-16 shrink-0 flex items-center gap-1 justify-end">
+          {isFailed && (
+            <button
+              className="p-1 text-text-dim hover:text-accent rounded"
+              onClick={onRetry}
+              disabled={isRetrying}
+              title="Retry the import (use after fixing path mapping)"
+            >
+              <RotateCw size={13} className={isRetrying ? "animate-spin" : ""} />
+            </button>
+          )}
+          <button
+            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-text-dim hover:text-status-missing rounded"
+            onClick={onRemove}
+            title="Remove from history"
+          >
+            <Trash2 size={13} />
+          </button>
+        </div>
       </div>
 
       {/* Mobile */}
@@ -517,9 +560,20 @@ function HistoryRow({
             <p className="text-xs text-text-dim truncate mt-0.5">{item.download_path}</p>
           )}
         </div>
-        <button className="p-1 text-text-dim hover:text-status-missing shrink-0" onClick={onRemove}>
-          <Trash2 size={12} />
-        </button>
+        <div className="flex flex-col gap-1 shrink-0">
+          {isFailed && (
+            <button
+              className="p-1 text-text-dim hover:text-accent"
+              onClick={onRetry}
+              disabled={isRetrying}
+            >
+              <RotateCw size={12} className={isRetrying ? "animate-spin" : ""} />
+            </button>
+          )}
+          <button className="p-1 text-text-dim hover:text-status-missing" onClick={onRemove}>
+            <Trash2 size={12} />
+          </button>
+        </div>
       </div>
     </div>
   );

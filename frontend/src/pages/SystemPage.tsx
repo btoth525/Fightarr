@@ -350,10 +350,26 @@ export default function SystemPage() {
       {/* Logs tab */}
       {tab === "logs" && (
         <section>
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
             <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider">
               Logs
             </h2>
+          <div className="flex items-center gap-2">
+          <button
+            className="btn-secondary flex items-center gap-1.5 text-xs"
+            onClick={() => {
+              const a = document.createElement("a");
+              a.href = "/api/v1/system/logs/download";
+              a.download = "";
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+            }}
+            title="Download the full log buffer as a .log file"
+          >
+            <Download size={12} />
+            Download
+          </button>
           <div className="flex rounded border border-border overflow-hidden text-xs">
             {[
               { val: "", label: "All" },
@@ -373,6 +389,7 @@ export default function SystemPage() {
                 {opt.label}
               </button>
             ))}
+          </div>
           </div>
         </div>
         {logsLoading && logs.length === 0 ? (
