@@ -63,7 +63,15 @@ async def poll_queue() -> None:
 
 
 async def _retry_pending_imports(items: list[QueueItem]) -> None:
-    """Retry import on COMPLETED items. Cap at MAX_IMPORT_ATTEMPTS."""
+    """Retry import on COMPLETED items. Cap at MAX_IMPORT_ATTEMPTS.
+
+    When attempts are exhausted, the item is flipped to FAILED but treated
+    as an *import* failure — NOT a release/download failure. The release is
+    NOT blocklisted and NO replacement is auto-grabbed, because the file is
+    sitting on disk and the user just needs to fix a path/permission issue
+    and click Retry. Only true download failures (SAB reporting error) go
+    through the blocklist + auto-retry pipeline.
+    """
     async with AsyncSessionLocal() as session:
         for item in items:
             db_item = await session.get(QueueItem, item.id)
@@ -75,16 +83,18 @@ async def _retry_pending_imports(items: list[QueueItem]) -> None:
                 db_item.status = QueueStatus.FAILED
                 db_item.error_message = (
                     f"Import failed after {MAX_IMPORT_ATTEMPTS} attempts: "
-                    f"{db_item.error_message or 'no video file in download path'}"
+                    f"{db_item.error_message or 'no video file in download path'}. "
+                    f"File is downloaded — fix the path/permission issue and click Retry."
                 )
                 db_item.completed_at = datetime.now(UTC)
                 logger.warning(
-                    "Import gave up on item %d after %d attempts — flipping to FAILED",
+                    "Import gave up on item %d after %d attempts — flipping to FAILED "
+                    "(import-only failure, not blocklisting or auto-grabbing)",
                     db_item.id,
                     MAX_IMPORT_ATTEMPTS,
                 )
                 await session.commit()
-                await _handle_failure(db_item)
+                await _handle_import_failure(db_item)
                 continue
 
             logger.info(
@@ -142,17 +152,24 @@ async def _poll_client(dc_id: int, items: list[QueueItem]) -> None:
 
             # Fire import when job reached completed state
             just_imported = False
+            just_import_failed = False
             if db_item.status == QueueStatus.COMPLETED:
                 just_imported = await _run_import(session, db_item)
-                # _run_import can flip COMPLETED → FAILED on a hard import error
+                # _run_import can flip COMPLETED → FAILED on a hard import error.
+                # That's an *import* failure (file on disk but couldn't be moved/
+                # named/permissioned) — NOT a release problem. Route it to the
+                # import-failure handler so we don't blocklist a good release.
                 if db_item.status == QueueStatus.FAILED:
-                    just_failed = True
+                    just_import_failed = True
 
             # Side effects after status transitions — done after commit so
             # rows are persisted before notifications/retries kick off.
             if just_failed:
                 await session.commit()
                 await _handle_failure(db_item)
+            elif just_import_failed:
+                await session.commit()
+                await _handle_import_failure(db_item)
             elif just_imported:
                 await session.commit()
                 await _handle_imported(db_item)
@@ -207,8 +224,42 @@ async def _run_import(session, item: QueueItem) -> bool:
         return False
 
 
+async def _handle_import_failure(item: QueueItem) -> None:
+    """Notify the user but DO NOT blocklist or auto-grab a replacement.
+
+    The download itself succeeded — the file is on disk. Re-grabbing a new
+    copy would just re-download the same content and hit the same import
+    error. Instead, surface the problem and wait for the user to fix the
+    underlying config (path mapping, permissions, mount) and click Retry.
+    """
+    from app.core.database import AsyncSessionLocal as _SL
+    from app.models.event import Event
+    from app.services import notifications
+
+    reason = item.error_message or "Import failed"
+    logger.warning(
+        "Import failure on item %d (%r) — release NOT blocklisted, no auto-retry. "
+        "User must fix the config and click Retry. Reason: %s",
+        item.id,
+        item.release_title,
+        reason,
+    )
+    try:
+        async with _SL() as s:
+            event = await s.get(Event, item.event_id)
+        if event is not None:
+            await notifications.on_failed(event, item.release_title, reason)
+    except Exception as exc:
+        logger.debug("Import-failure notification skipped: %s", exc)
+
+
 async def _handle_failure(item: QueueItem) -> None:
-    """Blocklist the failed release, fire a notification, and trigger retry."""
+    """Blocklist the failed release, fire a notification, and trigger retry.
+
+    Called only for *download* failures reported by the client itself — i.e.
+    SAB/NZBGet/qBit said the job failed, the file isn't on disk. Blocklisting
+    the release and grabbing a different one is the right move.
+    """
     from app.core.database import AsyncSessionLocal as _SL
     from app.models.event import Event
     from app.services import blocklist_service, notifications
