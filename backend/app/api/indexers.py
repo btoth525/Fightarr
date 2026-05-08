@@ -81,3 +81,30 @@ async def delete_indexer(indexer_id: int, session: AsyncSession = Depends(get_se
         raise HTTPException(status_code=404, detail="Indexer not found")
     await session.delete(obj)
     await session.commit()
+
+
+class ReorderItem(BaseModel):
+    id: int
+    priority: int
+
+
+@router.put("/indexer/reorder", response_model=list[IndexerOut])
+async def reorder_indexers(
+    items: list[ReorderItem],
+    session: AsyncSession = Depends(get_session),
+) -> list[Indexer]:
+    """Bulk-update indexer priorities in a single transaction.
+
+    Accepts an ordered list of {id, priority} pairs and updates all rows
+    atomically, preventing the race condition of two concurrent PUTs.
+    """
+    result = await session.execute(select(Indexer))
+    index_map = {obj.id: obj for obj in result.scalars().all()}
+
+    for item in items:
+        if item.id in index_map:
+            index_map[item.id].priority = item.priority
+
+    await session.commit()
+    result2 = await session.execute(select(Indexer).order_by(Indexer.priority.asc()))
+    return list(result2.scalars().all())

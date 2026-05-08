@@ -318,12 +318,9 @@ function IndexersSection() {
     onError: () => toast.error("Failed to remove indexer"),
   });
 
-  const updatePriority = useMutation({
-    mutationFn: ({ ix, newPriority }: { ix: Indexer; newPriority: number }) =>
-      api.put<Indexer>(`/indexer/${ix.id}`, {
-        ...ix,
-        priority: newPriority,
-      }),
+  const reorder = useMutation({
+    mutationFn: (ordered: Indexer[]) =>
+      api.put<Indexer[]>("/indexer/reorder", ordered.map((ix, i) => ({ id: ix.id, priority: i + 1 }))),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["indexers"] }),
     onError: () => {
       qc.invalidateQueries({ queryKey: ["indexers"] });
@@ -336,18 +333,17 @@ function IndexersSection() {
   function moveUp(idx: Indexer) {
     const i = sorted.findIndex((x) => x.id === idx.id);
     if (i <= 0) return;
-    const target = sorted[i - 1];
-    // Swap priorities so the rest of the list keeps stable ordering
-    updatePriority.mutate({ ix: idx, newPriority: target.priority });
-    updatePriority.mutate({ ix: target, newPriority: idx.priority });
+    const next = [...sorted];
+    [next[i - 1], next[i]] = [next[i], next[i - 1]];
+    reorder.mutate(next);
   }
 
   function moveDown(idx: Indexer) {
     const i = sorted.findIndex((x) => x.id === idx.id);
     if (i < 0 || i >= sorted.length - 1) return;
-    const target = sorted[i + 1];
-    updatePriority.mutate({ ix: idx, newPriority: target.priority });
-    updatePriority.mutate({ ix: target, newPriority: idx.priority });
+    const next = [...sorted];
+    [next[i], next[i + 1]] = [next[i + 1], next[i]];
+    reorder.mutate(next);
   }
 
   const testIndexer = async (id: number) => {
@@ -403,7 +399,7 @@ function IndexersSection() {
                 <div className="flex flex-col shrink-0">
                   <button
                     className="text-text-dim hover:text-text disabled:opacity-20 disabled:hover:text-text-dim"
-                    disabled={isFirst || updatePriority.isPending}
+                    disabled={isFirst || reorder.isPending}
                     onClick={() => moveUp(idx)}
                     title="Move up (higher priority — searched first)"
                   >
@@ -411,7 +407,7 @@ function IndexersSection() {
                   </button>
                   <button
                     className="text-text-dim hover:text-text disabled:opacity-20 disabled:hover:text-text-dim"
-                    disabled={isLast || updatePriority.isPending}
+                    disabled={isLast || reorder.isPending}
                     onClick={() => moveDown(idx)}
                     title="Move down (lower priority)"
                   >
