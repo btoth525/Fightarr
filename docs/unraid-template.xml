@@ -13,18 +13,18 @@
 
 IMPORTANT -- PATH SETUP (read before installing):
 
-Fightarr needs to see two things: where SABnzbd puts completed downloads, and where your Plex media library lives. The defaults below match the most common Unraid layout:
+Fightarr needs to see two things: where SABnzbd puts completed downloads, and where your media library lives. The defaults below match the most common Unraid layout:
 
   /mnt/user/downloads  ->  /downloads   (SAB drops finished files here)
-  /mnt/user/Plex       ->  /plex        (your Plex library root)
+  /mnt/user/media      ->  /media       (your media library root)
 
-After install, go to Fightarr Settings -&gt; Media Management and set Root Folder to /plex/UFC Shows (adjust if your UFC subfolder inside Plex has a different name).
+After install, go to Fightarr Settings -&gt; Media Management and set Root Folder to /media (or a subfolder like /media/UFC if you want UFC files in their own folder).
 
 In SABnzbd Settings -&gt; Categories, create a category named "ufc" and set its folder to the path inside /downloads where SAB puts that category (e.g. /downloads/complete/ufc). Fightarr picks up completed downloads from that path automatically.
 
-By default Fightarr MOVES the file out of /downloads into /plex (instant rename on the same filesystem, zero extra disk space). If you want to keep the original in downloads for seeding, enable "Use Hardlinks" in Fightarr Settings -&gt; Media Management -- hardlinks only work when /downloads and /plex are on the same Unraid array/pool. Permissions are set automatically (0775 folder, 0664 file) to match Unraid nobody:users + UMASK 002.
+By default Fightarr MOVES the file out of /downloads into /media (instant rename on the same filesystem, zero extra disk space). If you want to keep the original in downloads for seeding, enable "Use Hardlinks" in Fightarr Settings -&gt; Media Management -- hardlinks only work when /downloads and /media are on the same Unraid array/pool. Permissions are set automatically (0775 folder, 0664 file) to match Unraid nobody:users + UMASK 002.
 
-TRaSH-Guides /data layout: If you prefer a single unified mount, change the Downloads path to /mnt/user/data -&gt; /data, mirror that in SABnzbd and Plex, and set Root Folder to /data/media/ufc. See the Fightarr README Unraid section for the full walkthrough.</Overview>
+TRaSH-Guides /data layout: If you prefer a single unified mount, change the Downloads path to /mnt/user/data -&gt; /data, mirror that in SABnzbd, and set Root Folder to /data/media/ufc. See the Fightarr README Unraid section for the full walkthrough.</Overview>
   <Category>MediaApp:Video Tools:</Category>
   <WebUI>http://[IP]:[PORT:7879]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/btoth525/Fightarr/main/docs/unraid-template.xml</TemplateURL>
@@ -51,9 +51,9 @@ TRaSH-Guides /data layout: If you prefer a single unified mount, change the Down
     Description="Where SABnzbd (or your other download client) saves completed downloads. Must be the same physical share that SAB writes to -- Fightarr reads completed files from here before moving them to Plex. Example: /mnt/user/downloads"
     Type="Path" Display="always" Required="true" Mask="false">/mnt/user/downloads</Config>
 
-  <Config Name="Plex Media" Target="/plex" Default="/mnt/user/Plex" Mode="rw"
-    Description="Root of your Plex media share. Fightarr renames and moves imported UFC files into a subfolder here (e.g. /plex/UFC Shows). Must be the same physical share Plex reads from. Example: /mnt/user/Plex"
-    Type="Path" Display="always" Required="true" Mask="false">/mnt/user/Plex</Config>
+  <Config Name="Media" Target="/media" Default="/mnt/user/media" Mode="rw"
+    Description="Root of your media library. Fightarr renames and moves imported UFC files here. Must be the same share your media player (Plex/Jellyfin/Emby) reads from. Example: /mnt/user/media"
+    Type="Path" Display="always" Required="true" Mask="false">/mnt/user/media</Config>
 
   <!-- Identity -->
   <Config Name="PUID" Target="PUID" Default="99" Mode=""
