@@ -34,6 +34,18 @@ SAMPLE_RE = re.compile(r"\bsample\b", re.IGNORECASE)
 MIN_FILE_BYTES = 100 * 1024 * 1024  # 100 MB — anything smaller is almost certainly a sample
 
 
+# Common Fightarr-side mount points to probe when SAB reports a path that
+# isn't visible. Order matters — first match wins. /downloads is the standard
+# template mount, /data covers TRaSH-Guides single-mount setups.
+_PROBE_ROOTS = (
+    "/downloads",
+    "/data",
+    "/media",
+    "/mnt/user/downloads",
+    "/mnt/user/data",
+)
+
+
 async def _apply_path_mappings(remote_path: str | None) -> str | None:
     """Translate a download client's path into Fightarr's filesystem view.
 
@@ -64,6 +76,75 @@ async def _apply_path_mappings(remote_path: str | None) -> str | None:
     return remote_path
 
 
+async def _auto_discover_path(reported_path: str) -> tuple[str, str, str] | None:
+    """Find reported_path under a known Fightarr mount when the literal path is missing.
+
+    Slides the prefix: SAB reports /data/complete/UFC 327, Fightarr has /downloads
+    mounted at the same share — try /downloads/complete/UFC 327 etc until something
+    exists. Returns (resolved_path, remote_prefix, local_prefix) on success so the
+    caller can persist a PathMapping and stop scanning on subsequent imports.
+    """
+    if not reported_path:
+        return None
+
+    parts = Path(reported_path).parts
+    if len(parts) < 2:
+        return None
+
+    # Drop the leading "/" so we can re-stitch under each candidate root
+    suffix_parts = parts[1:] if parts[0] == "/" else parts
+
+    for root in _PROBE_ROOTS:
+        root_path = Path(root)
+        if not root_path.exists() or not root_path.is_dir():
+            continue
+        # Slide the suffix — first try the full thing, then drop one leading
+        # component at a time. Most specific match wins.
+        for i in range(len(suffix_parts)):
+            candidate = root_path.joinpath(*suffix_parts[i:])
+            if candidate.exists():
+                # Compute the prefix that mapped onto root for the PathMapping.
+                # e.g. reported=/data/complete/X, candidate=/downloads/complete/X
+                #      → remote_prefix=/data/, local_prefix=/downloads/
+                consumed = Path("/").joinpath(*suffix_parts[:i]) if i > 0 else Path("/")
+                remote_prefix = str(consumed)
+                if not remote_prefix.endswith("/"):
+                    remote_prefix += "/"
+                local_prefix = str(root_path)
+                if not local_prefix.endswith("/"):
+                    local_prefix += "/"
+                return str(candidate), remote_prefix, local_prefix
+    return None
+
+
+async def _persist_auto_mapping(remote_prefix: str, local_prefix: str) -> None:
+    """Save an auto-discovered PathMapping so subsequent imports are instant."""
+    from sqlalchemy import select
+
+    from app.core.database import AsyncSessionLocal
+    from app.models.path_mapping import PathMapping
+
+    async with AsyncSessionLocal() as session:
+        existing = await session.execute(
+            select(PathMapping).where(PathMapping.remote_path == remote_prefix)
+        )
+        if existing.scalar_one_or_none() is not None:
+            return
+        session.add(
+            PathMapping(
+                host="auto-discovered",
+                remote_path=remote_prefix,
+                local_path=local_prefix,
+            )
+        )
+        await session.commit()
+    logger.info(
+        "Auto-created PathMapping %r → %r (no manual setup needed)",
+        remote_prefix,
+        local_prefix,
+    )
+
+
 async def import_download(session: AsyncSession, item: QueueItem) -> None:
     """Move a completed download into the media library, Radarr-style."""
     from app.services.settings_service import load_settings
@@ -85,6 +166,21 @@ async def import_download(session: AsyncSession, item: QueueItem) -> None:
             translated_path,
         )
 
+    # Auto-discovery fallback — if the mapped path doesn't exist, scan known
+    # Fightarr-side mounts for the same folder. Covers the common case where
+    # SAB has /data → /mnt/user/downloads but Fightarr has /downloads → same.
+    if translated_path and not Path(translated_path).exists():
+        discovery = await _auto_discover_path(translated_path)
+        if discovery is not None:
+            resolved, remote_prefix, local_prefix = discovery
+            logger.info(
+                "Auto-resolved download path %r → %r (saving PathMapping)",
+                translated_path,
+                resolved,
+            )
+            translated_path = resolved
+            await _persist_auto_mapping(remote_prefix, local_prefix)
+
     video_file = _find_video_file(translated_path)
     if video_file is None:
         # Distinguish "path doesn't exist" from "path is empty / no video"
@@ -92,11 +188,14 @@ async def import_download(session: AsyncSession, item: QueueItem) -> None:
 
         root = _P(translated_path) if translated_path else None
         if root is None or not root.exists():
+            tried_roots = ", ".join(
+                r for r in _PROBE_ROOTS if _P(r).exists()
+            ) or "none of the standard mount points"
             raise FileNotFoundError(
-                f"Download path {translated_path!r} is not visible to Fightarr. "
-                f"Check that the host folder is mounted into BOTH the download "
-                f"client and Fightarr at the same path, OR add a Remote Path "
-                f"Mapping in Settings → Download Clients."
+                f"Download path {translated_path!r} not visible to Fightarr. "
+                f"Auto-discovery scanned: {tried_roots}. Make sure the host "
+                f"share holding completed downloads is mounted into the "
+                f"Fightarr container."
             )
         raise FileNotFoundError(
             f"No video file >100 MB found in {translated_path!r} (samples are skipped)."
