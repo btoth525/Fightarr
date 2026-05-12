@@ -13,6 +13,7 @@ When a download completes:
   7. Notify Plex / Jellyfin if configured.
 """
 
+import asyncio
 import contextlib
 import logging
 import os
@@ -215,7 +216,7 @@ async def import_download(session: AsyncSession, item: QueueItem) -> None:
         os.chmod(dest_dir, 0o775)
 
     dest_file = dest_dir / _build_filename(folder_name, quality, video_file.suffix)
-    _move_file(video_file, dest_file, use_hardlinks=db_settings.use_hardlinks)
+    await _move_file_async(video_file, dest_file, use_hardlinks=db_settings.use_hardlinks)
 
     await _save_poster(event, dest_dir)
 
@@ -324,17 +325,23 @@ def _build_filename(folder_name: str, quality: str, ext: str) -> str:
     return f"{folder_name}{ext}"
 
 
-def _move_file(src: Path, dest: Path, *, use_hardlinks: bool) -> None:
-    """Move (or hardlink) src → dest.
+async def _move_file_async(src: Path, dest: Path, *, use_hardlinks: bool) -> None:
+    """Move (or hardlink) src → dest without blocking the event loop.
+
+    Runs the actual I/O in a thread executor so a large cross-device copy
+    (e.g. 10 GB UFC file) doesn't freeze the FastAPI event loop and make
+    the UI appear hung for 30+ seconds.
 
     use_hardlinks=True  → os.link() so the original stays seedable; falls back
                           to shutil.move() on cross-device error.
-    use_hardlinks=False → shutil.move(): rename on same filesystem (instant,
-                          zero extra disk space), copy+delete across devices.
-    Either way, dest replaces any existing file and permissions are fixed to
-    0o664 (rw-rw-r--) so Plex / Jellyfin can read it and *arr processes can
-    overwrite it — matches Unraid nobody:users + UMASK 002 convention.
+    use_hardlinks=False → shutil.move(): atomic rename on same filesystem
+                          (instant), copy+delete across devices.
     """
+    await asyncio.to_thread(_move_file, src, dest, use_hardlinks=use_hardlinks)
+
+
+def _move_file(src: Path, dest: Path, *, use_hardlinks: bool) -> None:
+    """Synchronous file move — call via _move_file_async from async context."""
     if dest.exists():
         dest.unlink()
     if use_hardlinks:

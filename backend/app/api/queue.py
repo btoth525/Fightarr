@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -117,18 +117,18 @@ async def remove_from_queue(
     return {"status": "removed"}
 
 
-@router.post("/queue/{item_id}/retry")
+@router.post("/queue/{item_id}/retry", status_code=202)
 async def retry_import(
     item_id: int,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
 ) -> dict:
-    """Re-run the import pipeline for a FAILED queue item.
+    """Re-queue a FAILED item for import and return immediately (202 Accepted).
 
-    Use after fixing a path mapping or download client config so a stuck
-    download can be imported without re-grabbing it from the indexer.
+    The actual import runs as a background task so the UI doesn't hang waiting
+    for a potentially large file move to complete. Poll the queue endpoint to
+    see when status flips to IMPORTED.
     """
-    from app.services.importer import import_download
-
     item = await session.get(QueueItem, item_id)
     if item is None:
         raise HTTPException(status_code=404, detail="Queue item not found")
@@ -144,10 +144,28 @@ async def retry_import(
     item.error_message = None
     await session.commit()
 
-    try:
-        await import_download(session, item)
-        return {"status": "imported", "id": item_id}
-    except FileNotFoundError as exc:
-        return {"status": "pending", "message": str(exc)}
-    except Exception as exc:
-        return {"status": "error", "message": str(exc)}
+    # Fire import in the background — returns 202 immediately so the UI
+    # doesn't freeze waiting for a large file to be moved across mounts.
+    background_tasks.add_task(_run_retry_import, item_id)
+    return {"status": "queued", "id": item_id}
+
+
+async def _run_retry_import(item_id: int) -> None:
+    """Background task: run the full import pipeline for a retried item."""
+    from app.core.database import AsyncSessionLocal
+    from app.services.importer import import_download
+    from app.services.queue_monitor import _handle_import_failure, _handle_imported
+
+    async with AsyncSessionLocal() as session:
+        item = await session.get(QueueItem, item_id)
+        if item is None:
+            return
+        try:
+            await import_download(session, item)
+            await session.commit()
+            await _handle_imported(item)
+        except FileNotFoundError:
+            pass  # Leave as COMPLETED — queue monitor will retry next poll
+        except Exception:
+            await session.commit()
+            await _handle_import_failure(item)
