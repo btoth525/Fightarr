@@ -27,7 +27,7 @@ By default Fightarr MOVES the file out of /downloads into /media (instant rename
 TRaSH-Guides /data layout: If you prefer a single unified mount, change the Downloads path to /mnt/user/data -&gt; /data, mirror that in SABnzbd, and set Root Folder to /data/media/ufc. See the Fightarr README Unraid section for the full walkthrough.</Overview>
   <Category>MediaApp:Video Tools:</Category>
   <WebUI>http://[IP]:[PORT:7879]/</WebUI>
-  <TemplateURL>https://raw.githubusercontent.com/btoth525/Fightarr/main/docs/unraid-template.xml</TemplateURL>
+  <TemplateURL/>
   <Icon>https://raw.githubusercontent.com/btoth525/Fightarr/main/frontend/public/logo.png</Icon>
   <ExtraParams/>
   <PostArgs/>
