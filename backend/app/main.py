@@ -69,7 +69,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Fightarr",
     description="UFC event manager for Usenet and Plex.",
-    version="0.0.1",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
@@ -104,7 +104,7 @@ app.include_router(path_mappings_api.router, prefix=API_PREFIX, tags=["path-mapp
 async def root():
     return {
         "app": "Fightarr",
-        "version": "0.0.1",
+        "version": "0.2.0",
         "docs": "/docs",
         "api": API_PREFIX,
     }

@@ -1,7 +1,6 @@
 # Fightarr Roadmap
 
 Target: full feature and UX parity with Radarr, purpose-built for UFC events.
-Every item below maps to a concrete Radarr feature. If Radarr has it, Fightarr needs it.
 
 Legend: ✅ done · 🔨 in progress · ⬜ not started
 
@@ -9,283 +8,79 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 
 ## Phase 0 — Foundation ✅
 
-| # | Feature | Status |
-|---|---------|--------|
-| 0.1 | Repo scaffold, Docker layout | ✅ |
-| 0.2 | FastAPI backend skeleton | ✅ |
-| 0.3 | SQLAlchemy 2.0 async ORM + SQLite | ✅ |
-| 0.4 | Event model (slug, title, status, monitored, poster_url…) | ✅ |
-| 0.5 | Wikipedia scraper — `{YEAR}_in_UFC` | ✅ |
-| 0.6 | Schedule sync service (idempotent upsert + poster backfill) | ✅ |
-| 0.7 | APScheduler wired (6h schedule refresh, 30m search) | ✅ |
-| 0.8 | React + TypeScript + Vite + Tailwind dark theme | ✅ |
-| 0.9 | Pages: Events, Calendar, Activity, Wanted, Settings, System | ✅ |
-| 0.10 | Sidebar with logo + active-link accent | ✅ |
-| 0.11 | EventCard grid with poster art (Wikipedia/TMDB, no key required) | ✅ |
-| 0.12 | Newznab/Torznab client + 11 unit tests | ✅ |
-| 0.13 | DownloadClient model + CRUD API | ✅ |
-| 0.14 | SABnzbd · NZBGet · qBittorrent · Deluge · Transmission · Real-Debrid clients | ✅ |
-| 0.15 | Settings: Indexers + Download Clients + Metadata sections | ✅ |
-| 0.16 | UFC octagon + glove-bump SVG logo + favicon | ✅ |
+Core infrastructure, UI shell, Wikipedia scraper, indexer client, all download client integrations. Done.
 
 ---
 
-## Phase 1 — Core Search Loop 🔨
+## Phase 1 — Core Search Loop ✅
 
-This is what makes Fightarr useful. Everything else is polish on top.
-
-### 1.1 Query Builder ✅
-**Radarr equivalent**: movie title + year → search string
-- PPV numbered:  `UFC 300`, `UFC.300`
-- Fight Night with sequential number (e.g. "UFC Fight Night 267"): `UFC Fight Night 267`, `UFC.Fight.Night.267`
-- Fight Night date fallback: `UFC Fight Night 2024 10 05`, `UFC.Fight.Night.2024.10.05`
-- Fighter surnames from `main_event` as third-pass fallback: `UFC Strickland Hernandez`
-- NZB vs Torrent protocol badge on search results
-- Full quality profile display: `WEBDL-1080p`, `WEBRip-720p`, `Bluray-1080p`, `HDTV-720p`
-- Prelims badge + sort order (main card first, higher quality first, larger file first)
-- Search diagnostics: indexer errors and queries tried shown in UI
-
-### 1.2 Release Scorer ⬜
-**Radarr equivalent**: custom format score + quality profile cutoff
-- Resolution score: 2160p=100 · 1080p=80 · 720p=60 · 480p=20
-- Codec bonus: HEVC/x265 +10 · H264 +5
-- Source bonus: WEB-DL +15 · WEBRip +10 · HDTV 0
-- Size sanity: reject <500MB (too small) or >20GB (insane)
-- Skip prelims/early-prelims flag (user configurable)
-- Duplicate penalty: if two releases score the same, prefer smaller file
-- Returns scored `list[ScoredRelease]` sorted descending
-
-### 1.3 Quality Profiles Model + API ⬜
-**Radarr equivalent**: Settings > Profiles
-- `QualityProfile` model: name, cutoff (min quality to stop searching), allowed qualities list
-- Default profiles: "Any", "HD-1080p", "HD-720p", "Ultra-HD"
-- `GET/POST/PUT/DELETE /qualityprofile`
-- Event model gets `quality_profile_id` FK
-
-### 1.4 Search Loop ⬜
-**Radarr equivalent**: automatic + RSS search
-- For each monitored event in `MISSING` or `RELEASED` status:
-  1. Build queries via query builder
-  2. Search all enabled indexers (Newznab + Torznab)
-  3. Score all releases
-  4. Pick best release above quality profile cutoff
-  5. `add_download()` to highest-priority enabled download client
-  6. Create `QueueItem` row with `client_id`, `release_title`, `external_id`
-- Runs on APScheduler every 30 min (already wired, just needs implementation)
-- `POST /command/EventSearch` — manual trigger for a single event
-
-### 1.5 Manual / Interactive Search ✅
-**Radarr equivalent**: Movie detail → Interactive Search tab
-- `POST /event/{id}/search` — returns all releases across all enabled indexers
-- Frontend modal: Source · Age · Title · Quality · Indexer · Size · Grab
-- Quality badge: full Radarr-style profiles (WEBDL-1080p, WEBRip-720p, etc.)
-- Prelims badge + smart sort (main card first, best quality first, largest file first)
-- Protocol color coding: NZB (orange) vs Torrent (blue)
-- Grab button: `POST /event/{id}/grab` with `{ nzb_url, release_title, size_bytes, indexer_name }`
-- Search diagnostics: shows indexer errors and queries tried on failure
-
-### 1.6 Event Detail Page ✅
-**Radarr equivalent**: Movie detail overlay/page
-- Route: `/events/{id}`
-- Blurred poster backdrop + metadata panel with monitor toggle
-- Prev / Next keyboard navigation (← →)
-- Event Details card: status, type, number, date, venue, quality
-- File section: shows path after import
-- History modal: all QueueItems for this event
-- Interactive Search modal: full search + grab workflow
-- Refresh & Scan toolbar button
+| Feature | Status |
+|---|---|
+| Query builder — PPV by number, Fight Night by number + date + fighter names | ✅ |
+| Newznab / Torznab search across all enabled indexers | ✅ |
+| Release scorer — resolution, codec, source, size sanity | ✅ |
+| Interactive search modal — quality profiles, prelims badge, grab button | ✅ |
+| Auto-grab — monitored missing events searched every 30 min | ✅ |
+| Event detail page — poster, metadata, history, search | ✅ |
 
 ---
 
-## Phase 2 — Post-Processing ⬜
+## Phase 2 — Post-Processing ✅
 
-### 2.1 SABnzbd Completion Webhook ⬜
-**Radarr equivalent**: Settings > Download Clients > Completed Download Handling
-- `POST /api/v1/webhook/sabnzbd` — receives SAB post-process notification
-- Match `nzo_id` against QueueItem, get file path, trigger rename
-
-### 2.2 File Renamer ⬜
-**Radarr equivalent**: Settings > Media Management > Movie Naming
-- Naming format (configurable): `UFC {number} - {main_event} ({date})`
-- File: `UFC.{number}.{main_event}.{quality}.{codec}.mkv`
-- Handles Fight Night format: `UFC.Fight.Night.{date}.{main_event}.1080p.WEB-DL.mkv`
-- `POST /api/v1/command/RenameFiles` with event_id
-
-### 2.3 Library Import ⬜
-**Radarr equivalent**: Manual import + auto-import
-- Move or hardlink file to `FIGHTARR_MEDIA_ROOT/{event_folder}/`
-- Update `Event.file_path`, `Event.quality`, `Event.status = DOWNLOADED`
-- `POST /api/v1/command/ManualImport`
-
-### 2.4 Plex / Jellyfin Notification ⬜
-**Radarr equivalent**: Settings > Connect > Plex Media Server
-- `POST http://{plex_host}:32400/library/sections/{section_id}/refresh?X-Plex-Token={token}`
-- Config: `plex_host`, `plex_token`, `plex_section_id` in settings
+| Feature | Status |
+|---|---|
+| SABnzbd queue polling — detects completion within 30 s | ✅ |
+| SABnzbd history lookup by nzo_id (targeted, no scroll-off) | ✅ |
+| Remote path mapping — auto-detected on download client Test click | ✅ |
+| File import — async move (default) or hardlink, non-blocking | ✅ |
+| Radarr-style rename — `{Title} ({Year}) {Quality}.{ext}` | ✅ |
+| Poster download — `poster.jpg` into each event folder | ✅ |
+| Plex + Jellyfin library refresh after import | ✅ |
+| Auto-delete source files from SABnzbd after import | ✅ |
+| Import failure handling — retry button, no false blocklist | ✅ |
+| Blocklist + auto-retry on true download failures | ✅ |
+| Webhook endpoint — SAB script triggers immediate import | ✅ |
+| Docker multi-arch image (amd64 + arm64) on GHCR | ✅ |
+| Unraid Community Applications template | ✅ |
 
 ---
 
-## Phase 3 — Full Radarr UI Parity ⬜
+## Phase 3 — Full Radarr UI Parity 🔨
 
-### 3.1 Settings Page — Full Tab Navigation ⬜
-**Radarr equivalent**: Settings with sidebar tabs
-Tabs to implement:
-- **Media Management** — naming format, root folders, recycle bin, permissions
-- **Profiles** — quality profiles editor (cutoff + ordered quality list)
-- **Quality** — quality definitions (min/max size per quality)
-- **Indexers** — existing (expand with caps/test/RSS support)
-- **Download Clients** — existing (expand with remote path mappings)
-- **Import Lists** — stub for future expansion
-- **Connect** — Plex, Jellyfin, Discord, Apprise
-- **Metadata** — existing (Wikipedia + optional TMDB)
-- **General** — host, port, base URL, log level, auth, analytics opt-out
-- **UI** — theme, date format, language
-
-### 3.2 Events Page — Table View Toggle ⬜
-**Radarr equivalent**: Movies → toggle grid/table view
-- Table columns: Poster · Title · Date · Status · Quality · Size · Actions
-- Sortable columns (click header)
-- Sticky header
-- Bulk select + bulk actions (monitor/unmonitor, search, delete)
-
-### 3.3 Proper Modal Dialogs ⬜
-**Radarr equivalent**: Add Movie modal, Edit Movie modal
-- Replace inline form expansion in Settings with proper portal modals
-- Backdrop blur + escape-to-close + focus trap
-- Shared `<Modal>` component
-
-### 3.4 Toast / Notification System ⬜
-**Radarr equivalent**: Top-right toast notifications
-- Success (green), warning (yellow), error (red) toasts
-- Auto-dismiss after 4s
-- `useToast()` hook used throughout mutations
-- `react-hot-toast` or build a simple custom implementation
-
-### 3.5 Activity Page — Full Queue + History ✅
-**Radarr equivalent**: Activity > Queue + Activity > History
-- **Queue tab**: live progress bars, size, status badges, indexer/client columns
-  - Columns: Release · Quality · Size · Progress · Indexer · Client · Status · Remove
-  - Auto-refresh every 8s; remove button per row
-  - Error banner inline for failed items
-- **History tab**: completed/failed downloads with file paths
-  - Columns: Release · Quality · Size · Date + timeago · Indexer · Status · Remove
-  - Shows download path for imported items
-  - Auto-refresh every 15s (only when tab active)
-
-### 3.6 Wanted Page — Full Implementation ⬜
-**Radarr equivalent**: Wanted > Missing + Wanted > Cutoff Unmet
-- **Missing tab**: monitored events that aired but have no file
-  - Columns: Title · Date · Quality Profile · Last Search · Actions
-  - "Search All" button → bulk search
-- **Cutoff Unmet tab**: have a file but it's below quality cutoff
-  - Columns: Title · Date · Current Quality · Profile Cutoff · Actions
-
-### 3.7 System Page ⬜
-**Radarr equivalent**: System > Status / Tasks / Logs / Backup / Updates
-- **Status tab**: app version, DB size, start time, memory, platform
-- **Tasks tab**: list scheduled tasks with next-run time + manual trigger
-- **Logs tab**: tail log output (last 500 lines), level filter, download logs
-- **Backup tab**: create + download DB backup
-- **Updates tab**: GitHub Releases API — show current vs latest
-
-### 3.8 Keyboard Shortcuts ⬜
-**Radarr equivalent**: `?` shows shortcut overlay
-- `G` then `M` → Events (Movies)
-- `G` then `C` → Calendar
-- `G` then `A` → Activity
-- `G` then `W` → Wanted
-- `G` then `S` → Settings
+| Feature | Status |
+|---|---|
+| Activity — Queue / History / Blocklist tabs | ✅ |
+| System — Status / Tasks / Health / Logs tabs | ✅ |
+| Settings — Media Management, Indexers, Download Clients, Connect, Metadata | ✅ |
+| Wanted — Missing tab with Search All | ✅ |
+| Quality profiles UI (cutoff model) | ⬜ |
+| Wanted — Cutoff Unmet tab | ⬜ |
+| Events page — table view toggle | ⬜ |
+| Bulk actions — monitor/unmonitor/search selected | ⬜ |
+| Keyboard shortcuts | ⬜ |
+| Mobile layout | ⬜ |
 
 ---
 
-## Phase 4 — Quality of Life ⬜
+## Phase 4 — Notifications & Quality of Life ⬜
 
-### 4.1 Tags System ⬜
-**Radarr equivalent**: Tags on movies + indexers + download clients
-- `Tag` model (id, label)
-- Events, indexers, download clients all support multiple tags
-- Tags filter on Events page
-
-### 4.2 Notifications / Connect ⬜
-**Radarr equivalent**: Settings > Connect
-- Discord webhook: `POST {webhook_url}` on grab / import / failure
-- Apprise integration for 50+ notification providers
-- Minimum viable: Discord + ntfy
-
-### 4.3 UFCStats Scraper ⬜
-- When Wikipedia is missing fight card details, fall back to ufcstats.com
-- Adds co-main, prelims, and fighter records to `card_data`
-
-### 4.4 Full Card Data ⬜
-- Parse main / co-main / prelims / early prelims into structured `card_data` JSON
-- Surface on Event detail page as fight-by-fight card
-
-### 4.5 Settings Persistence (DB-backed) ⬜
-**Radarr equivalent**: all settings in DB, not env vars
-- `Setting` model: `key`, `value`, `type`
-- Settings API: `GET/PUT /api/v1/config/{key}`
-- Download client credentials stay in DB (already done)
-- Move naming format, root folder, quality profiles, notification webhooks → DB
-
-### 4.6 Auth ⬜
-**Radarr equivalent**: Settings > General > Authentication
-- Form login with username/password
-- JWT session token
-- Optional: API key for external apps
-- Dev mode can disable auth
+| Feature | Status |
+|---|---|
+| Discord webhook — on grab / import / failure | ⬜ |
+| Apprise integration | ⬜ |
+| Tags system | ⬜ |
+| Auth — form login + JWT | ⬜ |
+| Settings backup / restore | ⬜ |
+| Full fight card data (prelims structured) | ⬜ |
 
 ---
 
-## Phase 5 — Container & CI ⬜
+## Phase 5 — Beyond UFC ⬜
 
-### 5.1 Multi-stage Dockerfile ⬜
-```
-Stage 1 (builder): node:20-alpine → npm ci && npm run build
-Stage 2 (backend): python:3.12-slim → pip install, copy frontend dist into /static
-Stage 3 (final): copy from backend, set PUID/PGID/TZ, EXPOSE 7878
-```
-- FastAPI serves `/` from the bundled frontend static files
-- Single container, single port — Unraid-friendly
-
-### 5.2 GitHub Actions CI ⬜
-- On every push/PR:
-  - `ruff check` + `black --check` backend
-  - `pytest` backend
-  - `tsc --noEmit` + `npm run build` frontend
-- On push to `main`:
-  - Build multi-arch Docker image (`linux/amd64`, `linux/arm64`)
-  - Push to `ghcr.io/btoth525/fightarr:latest` + `ghcr.io/btoth525/fightarr:{sha}`
-
-### 5.3 Unraid Community Applications Template ⬜
-- XML template in `unraid/fightarr.xml`
-- Variables: `FIGHTARR_DB_PATH`, `FIGHTARR_TMDB_API_KEY` (optional), `PUID`, `PGID`, `TZ`
-- Volume: `/config` → database + logs
-- Network: `bridge`, port 7878
+Boxing · WWE · AEW · ONE Championship · PFL
 
 ---
 
-## Phase 6 — Beyond UFC ⬜
+## Current version: v0.2.0 (Alpha)
 
-If the core works well, the architecture trivially extends to other live sports PPVs
-that Radarr also can't handle. Each needs only a new scraper + query builder.
-
-- [ ] **Boxing** — BoxRec event list, ESPN PPV
-- [ ] **WWE** — Wikipedia `{YEAR}_in_WWE`, match card
-- [ ] **AEW** — Wikipedia `List_of_AEW_pay-per-view_events`
-- [ ] **PFL** — Professional Fighters League season events
-- [ ] **ONE Championship** — Singapore-based MMA
-
----
-
-## Definition of "Looks and Works Like Radarr"
-
-A feature is done when it passes this checklist:
-- [ ] Dark theme matches Radarr's palette (near-black bg, subtle borders, accent highlight)
-- [ ] Grid and table views both work on the main content page
-- [ ] Every action has a loading state (spinner or disabled button)
-- [ ] Every mutation shows a toast on success and on error
-- [ ] Modals have backdrop, escape-to-close, and focus trap
-- [ ] Settings page has tab navigation in a sidebar (not all on one page)
-- [ ] Connection test buttons exist for every external service
-- [ ] Keyboard navigation works (at minimum tab order is logical)
-- [ ] Mobile layout doesn't break (sidebar collapses, cards reflow)
-- [ ] No placeholder text that says "TODO" or "stub" visible to the user
+The happy path works end-to-end: schedule sync → search → grab → SABnzbd → import → Plex.

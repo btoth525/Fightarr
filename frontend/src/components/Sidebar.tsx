@@ -91,7 +91,7 @@ export default function Sidebar() {
       </nav>
 
       <div className="px-4 py-3 border-t border-border text-xs text-text-dim">
-        v0.0.1 · pre-alpha
+        v0.2.0 · alpha
       </div>
     </aside>
   );

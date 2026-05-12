@@ -7,11 +7,11 @@
 **UFC event manager for Usenet and Plex**
 
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-orange.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](https://python.org)
+[![Python](https://img.shields.io/badge/Python-3.12%2B-blue.svg)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688.svg)](https://fastapi.tiangolo.com)
 [![React](https://img.shields.io/badge/React-18-61DAFB.svg)](https://react.dev)
-[![Status](https://img.shields.io/badge/Status-Pre--Alpha-red.svg)](#status)
-[![Vibe Coded](https://img.shields.io/badge/Vibe--Coded-AI--Assisted-purple.svg)](#-vibe-coded--read-this-before-you-deploy)
+[![Status](https://img.shields.io/badge/Status-Alpha-yellow.svg)](#status)
+[![GHCR](https://img.shields.io/badge/GHCR-latest-blue.svg)](https://github.com/btoth525/Fightarr/pkgs/container/fightarr)
 
 Radarr [explicitly won't support UFC](https://github.com/Radarr/Radarr/issues/9215). Fightarr does.
 
@@ -19,62 +19,52 @@ Radarr [explicitly won't support UFC](https://github.com/Radarr/Radarr/issues/92
 
 ---
 
-## ⚠️ Vibe-coded — read this before you deploy
+## What it does
 
-Fightarr is **vibe-coded**: a human owner directing an AI coding assistant in conversational, iterative passes rather than a traditional spec → design → review → implement workflow. The features are real, the tests pass, the production build is clean — but you should treat the codebase the same way you'd treat any unaudited OSS app you found on GitHub last week.
+Fightarr is a purpose-built sibling to Radarr for UFC events. It scrapes the full UFC schedule from Wikipedia, searches your Newznab indexers automatically, sends downloads to SABnzbd, and imports the finished file directly into your Plex/Jellyfin library — renamed, poster included, source copy deleted.
 
-**Specifically:**
-
-- **No security audit yet.** Don't expose this to the public internet without a reverse proxy + auth in front of it. There is no built-in authentication. Run it on your LAN or behind a VPN/Tailscale/Cloudflare Tunnel.
-- **Stores secrets in SQLite.** API keys (indexer, Plex, Jellyfin, Discord webhooks) and download-client passwords live in `fightarr.db`. They are *not* encrypted at rest — protect that file the same way you'd protect a `.env` with the same secrets.
-- **Talks to your indexers and download clients on your behalf.** Misconfigured priority ordering or quality scoring could grab releases you didn't want. Start with monitor-by-default *off* (it is) and grab a few events manually before turning on bulk auto-search.
-- **Schema migrations are best-effort additive.** New columns are auto-added on startup, but column type changes or destructive renames will require a manual `sqlite3` step. Back up `fightarr.db` before pulling a new version.
-- **The disk side-effects are real.** The importer hardlinks/copies files into your media root, downloads `poster.jpg` into each event folder, and triggers Plex/Jellyfin library scans. Test against a scratch directory first.
-- **Production-ready means "the happy path works end-to-end."** It does not mean every error case has been thought through. File a GitHub issue when you find one.
-
-If you'd rather wait for a human-reviewed v1.0.0 cut, watch the repo and check back when there's a versioned tag without `pre-alpha` on it.
-
----
-
-## The problem
-
-UFC release names look like `UFC.300.Pereira.vs.Hill.1080p.WEB-DL.H264`. There is no `(YYYY)`. The event is not in TMDB. Radarr's parser requires both. The Radarr team closed the feature request as **Won't Fix** and the community has been duct-taping workarounds for years — manually adding each card as a fake movie, manually matching releases, manually renaming files.
-
-Fightarr is a purpose-built sibling to Radarr that solves this correctly. It speaks directly to your Newznab indexers and SABnzbd, understands UFC event naming natively, and organizes your library the way Plex expects — without any of the Radarr-shaped hacks.
+| Feature | Status |
+|---|---|
+| Full UFC schedule from Wikipedia (PPVs, Fight Nights, On ABC) | ✅ |
+| Poster art via Wikipedia REST API — no API key needed | ✅ |
+| Newznab / Torznab indexer support + connection test | ✅ |
+| SABnzbd, NZBGet, qBittorrent, Deluge, Transmission, Real-Debrid | ✅ |
+| Interactive search — quality profiles, prelims badge, grab button | ✅ |
+| Auto-grab — monitored events searched every 30 min | ✅ |
+| Post-processing — move file, rename Radarr-style, download poster | ✅ |
+| Auto path mapping — detects SAB/Fightarr mount mismatch on Test click | ✅ |
+| Plex + Jellyfin library refresh after import | ✅ |
+| Auto-delete source files from SAB after successful import | ✅ |
+| Activity queue — live progress, history, blocklist | ✅ |
+| Blocklist + auto-retry on download failure | ✅ |
+| Event detail page — poster, card, interactive search, history | ✅ |
+| Calendar view | ✅ |
+| Wanted list — missing monitored events with Search All | ✅ |
+| System page — status, tasks, health, logs, download logs | ✅ |
+| Unraid Community Applications template | ✅ |
+| Multi-arch Docker image (amd64 + arm64) on GHCR | ✅ |
+| Quality profiles UI + cutoff | 📋 Planned |
+| Discord / Apprise notifications | 📋 Planned |
 
 ---
 
 ## Screenshots
 
-> The screenshots below are from earlier builds. The UI has since gained Radarr-style left-sidebar Settings tabs, a top-tab System page (Status / Tasks / Health / Logs), inline priority arrows on indexers and download clients, a Blocklist tab in Activity, sidebar count badges, toast notifications, and Discord webhook notifications. Fresh captures will land in a future commit.
-
 <table>
 <tr>
-<td><b>Events</b> — every event tracked across the full schedule, scraped live from Wikipedia, monitor toggle per card</td>
+<td><b>Events</b> — full UFC schedule with poster art, monitor toggle, status badges</td>
 </tr>
 <tr>
 <td><img src="docs/screenshots/events.png" alt="Events page" /></td>
 </tr>
 <tr>
-<td><b>Calendar</b> — upcoming events grouped by date with venue details</td>
-</tr>
-<tr>
-<td><img src="docs/screenshots/calendar.png" alt="Calendar page" /></td>
-</tr>
-<tr>
-<td><b>Wanted</b> — monitored events with no file, "Search All" + per-event "Auto-Grab" buttons</td>
-</tr>
-<tr>
-<td><img src="docs/screenshots/wanted.png" alt="Wanted page" /></td>
-</tr>
-<tr>
-<td><b>Activity</b> — Queue / History / Blocklist tabs with live progress, sortable columns, and inline error messages</td>
+<td><b>Activity</b> — live download queue, history, blocklist</td>
 </tr>
 <tr>
 <td><img src="docs/screenshots/activity.png" alt="Activity page" /></td>
 </tr>
 <tr>
-<td><b>Settings</b> — Radarr-style left-sidebar tabs: Media Management, Indexers, Download Clients, Connect, Metadata. Inline priority arrows on indexer/client rows.</td>
+<td><b>Settings</b> — indexers, download clients, media management, connect</td>
 </tr>
 <tr>
 <td><img src="docs/screenshots/settings.png" alt="Settings page" /></td>
@@ -83,263 +73,77 @@ Fightarr is a purpose-built sibling to Radarr that solves this correctly. It spe
 
 ---
 
-## What it does
+## Quickstart — Unraid
 
-| Feature | Status |
-|---|---|
-| Scrapes UFC schedule from Wikipedia (PPVs, Fight Nights, On ABC) | ✅ Working |
-| Historical year sync (any year from 2001) + future year pre-load | ✅ Working |
-| Cover art — Wikipedia REST API, zero config, no API key needed | ✅ Working |
-| Newznab / Torznab indexer support + connection test | ✅ Working |
-| Calendar view — next 30 days, grouped by date | ✅ Working |
-| Wanted list — monitored events with no file | ✅ Working |
-| Indexer CRUD + test button via Settings UI | ✅ Working |
-| Download clients — SABnzbd, NZBGet, qBittorrent, Deluge, Transmission, Real-Debrid | ✅ Working |
-| Download client CRUD + connection test via Settings UI | ✅ Working |
-| Post-processing renamer — Radarr-style Plex folder/file naming | ✅ Working |
-| Hardlink-first library import (copy fallback) | ✅ Working |
-| Plex + Jellyfin library refresh notify | ✅ Working |
-| Activity queue — live progress bars, status badges, auto-refresh | ✅ Working |
-| History page — imported/failed downloads with file paths | ✅ Working |
-| Live DB schema migrations on startup (no Alembic required) | ✅ Working |
-| Event detail page — poster, metadata, history, interactive search | ✅ Working |
-| Query builder — PPV by number, Fight Night by sequential number + date fallback, fighter surnames | ✅ Working |
-| Interactive search — quality profiles (WEBDL-1080p), Prelims badge, sorted results | ✅ Working |
-| Search diagnostics — indexer errors and queries tried shown in UI | ✅ Working |
-| Monitor/unmonitor toggle — per-event and bulk unmonitor all | ✅ Working |
-| Release scorer — resolution, codec, size, prelims filter | 🔧 In progress |
-| Quality profiles UI (cutoff model) | 📋 Planned |
-| Discord / Apprise notifications | 📋 Planned |
-| Single-container Docker image for Unraid | 📋 Planned |
-| Unraid Community Applications template | 📋 Planned |
+1. In Unraid **Apps**, search for **Fightarr** or add the template manually from:
+   `https://raw.githubusercontent.com/btoth525/Fightarr/main/docs/unraid-template.xml`
+2. Set your **Downloads** path (same share SABnzbd writes to) and **Media** path (your Plex/Jellyfin library folder)
+3. Start the container — open `http://[IP]:7878`
+4. Go to **Settings → Download Clients**, add SABnzbd and click **Test** — Fightarr auto-detects the path mapping
+5. Go to **Settings → Indexers**, add your Newznab indexer
+6. Go to **Settings → Media Management**, confirm the Root Folder path
+7. Find an event on the **Events** page, click the search icon to grab it
 
-Full roadmap: [docs/ROADMAP.md](docs/ROADMAP.md)
+> **Path tip:** your Downloads mount and Media mount can be any path on your Unraid shares. Edit the container paths in Unraid's Docker UI — they will stick permanently (TemplateURL has been removed so Force Update won't reset them).
 
----
-
-## Quickstart
-
-### Docker (recommended — single container)
+### Docker (non-Unraid)
 
 ```bash
 docker run -d \
   --name fightarr \
   -p 7878:7878 \
   -v /your/config:/config \
-  -v /your/ufc/media:/media \
+  -v /your/downloads:/downloads \
+  -v /your/media:/media \
+  -e PUID=1000 -e PGID=1000 -e TZ=America/New_York \
   ghcr.io/btoth525/fightarr:latest
 ```
 
 | URL | Purpose |
 |---|---|
-| http://localhost:7878 | Web UI |
-| http://localhost:7878/api/v1 | REST API |
-| http://localhost:7878/docs | Swagger |
-
-> Port 7878 matches Radarr's default — no muscle-memory retraining required.
-
-### Docker Compose (dev)
-
-```bash
-git clone https://github.com/btoth525/Fightarr
-cd Fightarr
-docker compose up --build
-```
-
-### Manual (development)
-
-**Backend**
-```bash
-cd backend
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 7878
-```
-
-**Frontend**
-```bash
-cd frontend
-npm install
-npm run dev
-```
+| `http://localhost:7878` | Web UI |
+| `http://localhost:7878/api/v1` | REST API |
+| `http://localhost:7878/docs` | Swagger |
 
 ---
 
-## Library output (Plex-ready)
+## Path mapping
 
-When a download completes, Fightarr renames and organizes files exactly the way Plex expects:
+Fightarr and SABnzbd often run in separate Docker containers and see the same NAS share under different paths (SAB uses `/data/complete/`, Fightarr mounts it as `/downloads/`). When you click **Test** on a SABnzbd download client, Fightarr automatically queries SAB's config, detects the mismatch, and saves a Remote Path Mapping — no manual setup needed.
+
+You can also manage mappings manually under **Settings → Download Clients → Remote Path Mappings**.
+
+---
+
+## Library output
 
 ```
 {media_root}/
 ├── UFC 300 - Pereira vs. Hill (2024)/
 │   ├── UFC 300 - Pereira vs. Hill (2024) WEBDL-1080p.mkv
 │   └── poster.jpg
-├── UFC Fight Night - Strickland vs. Hernandez (2026)/
-│   ├── UFC Fight Night - Strickland vs. Hernandez (2026) WEBDL-1080p.mkv
-│   └── poster.jpg
-└── ...
+└── UFC Fight Night - Strickland vs. Hernandez (2026)/
+    ├── UFC Fight Night - Strickland vs. Hernandez (2026) WEBDL-1080p.mkv
+    └── poster.jpg
 ```
 
-- **Folder format**: `{Title} ({Year})` — Radarr-compatible, Plex Movie agent picks it up automatically
-- **Filename format**: `{Folder} {Quality}.{ext}` with full quality profile (`WEBDL-1080p`, `Bluray-2160p`, `WEBRip-720p`, `HDTV-720p`)
-- **Poster art**: `poster.jpg` is downloaded into each event folder — Plex's Local Media Assets agent uses it as the cover even without a TMDB match
-- **Move by default**: imports use `shutil.move()` — instant rename on the same filesystem, copy+delete across devices; enable **Use Hardlinks** in Settings if you want to keep the original seedable
-- **Sample skipping**: anything under 100 MB or with "sample" in the name is ignored
-
-### SAB / NZBGet category setup
-
-Fightarr sends every download with a `cat=` param (default: `ufc`). Configure your downloader to put that category somewhere Fightarr can read:
-
-**SABnzbd**: Settings → Categories → Add a category named `ufc`. Set the folder to whatever incomplete/complete path you use (e.g. `/downloads/ufc`). That's it — Fightarr's queue monitor watches SAB history, finds the largest video file, renames it, and moves it into your media root.
-
-**NZBGet**: Settings → Categories → Add `ufc` with a destination dir. Same flow as SAB.
-
-You don't need post-processing scripts. Fightarr handles renaming, poster art, and Plex/Jellyfin notification on its own — same model as Radarr.
+Plex picks up the folder name, quality tag, and poster automatically. No TMDB match required.
 
 ---
 
-## Architecture
+## Security note
 
-```
-┌──────────────┐   ┌────────────────────┐   ┌──────────┐   ┌──────┐
-│  Wikipedia   │   │  Newznab indexers  │   │ SABnzbd  │   │ Plex │
-│  (schedule)  │   │  (your provider)   │   │          │   │      │
-└──────┬───────┘   └─────────┬──────────┘   └────┬─────┘   └──┬───┘
-       │                     │                   ▲             ▲
-       ▼                     ▼                   │             │
-┌──────────────────────────────────────────────────────────────────┐
-│                           Fightarr                               │
-│                                                                  │
-│  Scrapers → Event DB → Query builder → Newznab search            │
-│                              ↓                                   │
-│                        Release scorer → SABnzbd API              │
-│                                              ↓                   │
-│                                     Post-process renamer         │
-└──────────────────────────────────────────────────────────────────┘
-```
-
-**Stack**
-
-| Layer | Tech |
-|---|---|
-| Backend | Python 3.11, FastAPI, SQLAlchemy 2.0 (async), SQLite, APScheduler |
-| Frontend | React 18, TypeScript, Vite, Tailwind CSS, TanStack Query |
-| Scraping | httpx, BeautifulSoup4, lxml |
-| Indexer client | Newznab (lxml XML parser) |
-| Download client | SABnzbd HTTP API |
-| Container | Docker Compose (dev), single multi-stage image (prod/Unraid) |
-
----
-
-## Unraid
-
-Fightarr is built to live in your Unraid tower alongside Radarr, Sonarr, and SABnzbd. The single most important thing to get right is **path mapping**: Fightarr can only import a completed download if it can see the folder SAB writes to **and** the Plex share it writes into.
-
-### Standard layout (separate `/downloads` + `/Plex` shares)
-
-This is the most common Unraid setup — downloads on one share, media on another:
-
-```yaml
-# Fightarr
-/mnt/user/appdata/fightarr   →  /config       (SQLite database — never share)
-/mnt/user/downloads          →  /downloads    (SAB drops finished files here)
-/mnt/user/Plex               →  /plex         (Plex library root)
-
-# SABnzbd  (must see the same download share)
-/mnt/user/downloads          →  /downloads
-  → SAB category "ufc" folder = /downloads/complete/ufc
-
-# Plex  (must see the same media share)
-/mnt/user/Plex               →  /Plex
-  → Library path = /Plex/UFC Shows
-```
-
-After install, in Fightarr **Settings → Media Management**, set **Root Folder** to `/plex/UFC Shows`.
-
-In **SABnzbd Settings → Categories**, set the `ufc` category folder to wherever inside `/downloads/` SAB puts that category (e.g. `/downloads/complete/ufc`).
-
-> **Move vs Hardlink:** By default Fightarr **moves** the file — an instant rename on the same filesystem, zero extra disk space, and the file disappears from your downloads folder as expected. Enable **Use Hardlinks** in Settings → Media Management only if you want the original to stay in downloads for seeding; hardlinks require `/downloads` and `/Plex` to be on the same Unraid array/pool. Either way, Fightarr sets correct permissions automatically (`0775` folder, `0664` file) matching `nobody:users` + `UMASK=002`.
-
-### TRaSH-Guides `/data` layout (single unified mount)
-
-If you prefer the Servarr-recommended single-mount approach and all your containers use `/data`:
-
-```yaml
-# Fightarr
-/mnt/user/data               →  /data
-
-# SABnzbd
-/mnt/user/data               →  /data
-  → SAB category "ufc" folder = /data/usenet/complete/ufc
-
-# Plex
-/mnt/user/data               →  /data
-  → Library path = /data/media/ufc
-```
-
-Set Root Folder to `/data/media/ufc`. Hardlinks always work here because everything is under one share.
-
-### If SAB and Fightarr report different paths
-
-Add a **Remote Path Mapping** in Fightarr **Settings → Download Clients → Remote Path Mappings**:
-
-```
-Remote (SAB reports):   /downloads/complete/ufc
-Local  (Fightarr sees): /downloads/complete/ufc
-```
-
-This is the same feature as Radarr's Remote Path Mappings — Fightarr translates the path SAB returns before looking for files.
-
-### Container settings
-
-Pull from GHCR — multi-arch (`linux/amd64` + `linux/arm64`):
-
-```bash
-docker pull ghcr.io/btoth525/fightarr:latest
-```
-
-Default port is `7878` (matches Radarr) but the Unraid template defaults to `7879` so it doesn't collide if you're running both. Run-as user defaults to `99:100` (`nobody:users`) and `UMASK=002` to match Radarr/Sonarr file permissions.
-
-The Unraid template lives at [`docs/unraid-template.xml`](docs/unraid-template.xml) and a Community Applications submission will follow once the project has a versioned tag without `pre-alpha` on it.
-
----
-
-## Docker image
-
-Production images are published to GitHub Container Registry:
-
-```bash
-docker pull ghcr.io/btoth525/fightarr:latest
-```
-
-Multi-arch: `linux/amd64` and `linux/arm64` (covers Unraid on both Intel/AMD and ARM boards).
-
-Tags follow `v0.x.y` semver. `:latest` always points to the most recent release.
+Fightarr has no built-in authentication. Run it on your LAN or behind a VPN/reverse proxy. API keys and download client credentials are stored in SQLite — back up `fightarr.db` before updating.
 
 ---
 
 ## Contributing
 
-Open-source from day one. PRs welcome.
-
-- Read [CONTRIBUTING.md](CONTRIBUTING.md) for the ground rules
-- Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design decisions
-- The [Radarr issue](https://github.com/Radarr/Radarr/issues/9215) is the canonical "why this exists" document
-
-**Good first issues to pick up:**
-- Query builder — given an `Event`, generate UFC-specific Newznab search strings
-- Release scorer — rank results by resolution, codec, size, and user preferences
-- SABnzbd client — fill in the `add_url` and `queue_status` stubs
+PRs welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ```bash
-# Run tests
-cd backend && pytest -v
-
-# Lint
-ruff check . && black --check .
+cd backend && pytest -v        # run tests
+ruff check . && black --check . # lint
 ```
 
----
-
-## License
-
-[GPL-3.0](LICENSE) — same as Radarr, Sonarr, Lidarr, and the rest of the ecosystem. The *arr norms apply here too.
+[GPL-3.0](LICENSE) — same as Radarr, Sonarr, Lidarr.
