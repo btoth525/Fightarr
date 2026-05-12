@@ -111,6 +111,29 @@ class SABnzbdClient:
                 }
         return None
 
+    async def get_complete_dir(self) -> str | None:
+        """Return SABnzbd's configured complete_dir (where finished downloads land).
+
+        Used at download-client setup time to auto-create a path mapping so
+        Fightarr knows how to reach files SAB has already finished.
+        """
+        try:
+            params = {
+                "output": "json",
+                "apikey": self.api_key,
+                "mode": "get_config",
+                "section": "misc",
+                "keyword": "complete_dir",
+            }
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                r = await client.get(f"{self.host}/api", params=params)
+                r.raise_for_status()
+                data = r.json()
+            return data.get("config", {}).get("misc", {}).get("complete_dir")
+        except Exception as exc:
+            logger.debug("Could not fetch SABnzbd complete_dir: %s", exc)
+            return None
+
     async def test_connection(self) -> bool:
         try:
             params = {"output": "json", "apikey": self.api_key, "mode": "version"}

@@ -602,10 +602,13 @@ function DownloadClientsSection() {
     setTesting(id);
     const dc = clients.find((c) => c.id === id);
     try {
-      const result = await api.post<{ success: boolean }>(`/downloadclient/${id}/test`);
+      const result = await api.post<{ success: boolean; path_mapping?: { remote_path: string; local_path: string; auto_created: boolean } | null }>(`/downloadclient/${id}/test`);
       setTestResult((prev) => ({ ...prev, [id]: result.success }));
       if (result.success) {
         toast.success(`${dc?.name ?? "Client"} connected`);
+        if (result.path_mapping?.auto_created) {
+          toast.info(`Path mapping auto-created: ${result.path_mapping.remote_path} → ${result.path_mapping.local_path}`, { duration: 6000 });
+        }
       } else {
         toast.error(`${dc?.name ?? "Client"} connection failed`);
       }

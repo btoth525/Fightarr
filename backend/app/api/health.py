@@ -94,10 +94,7 @@ async def download_logs() -> PlainTextResponse:
     from app.core.log_buffer import get_logs
 
     items = get_logs(limit=10_000)
-    lines = [
-        f"{i['ts']} {i['level']:<8} {i['logger']:<40} {i['message']}"
-        for i in items
-    ]
+    lines = [f"{i['ts']} {i['level']:<8} {i['logger']:<40} {i['message']}" for i in items]
     body = "\n".join(lines) + "\n"
 
     stamp = datetime.now(tz=UTC).strftime("%Y%m%d-%H%M%S")

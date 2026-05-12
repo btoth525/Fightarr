@@ -80,10 +80,11 @@ def start_scheduler() -> None:
         next_run_time=_now_plus(120),  # Wait 2 min for Wikipedia sync to finish
     )
 
-    # Download client polling — every minute
+    # Download client polling — every 30 s (Radarr default is 60s; 30s halves the
+    # worst-case import delay without meaningfully increasing API call volume)
     _scheduler.add_job(
         poll_queue,
-        trigger=IntervalTrigger(seconds=60),
+        trigger=IntervalTrigger(seconds=30),
         id="queue_monitor",
         name="Poll download clients for queue updates",
         replace_existing=True,
