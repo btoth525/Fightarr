@@ -296,10 +296,12 @@ async def _handle_failure(item: QueueItem) -> None:
 
 
 async def _handle_imported(item: QueueItem) -> None:
-    """Fire import notification (Plex notify is handled inside importer)."""
+    """Fire import notification and clean up the source files from the download client."""
     from app.core.database import AsyncSessionLocal as _SL
+    from app.models.download_client import DownloadClient
     from app.models.event import Event
     from app.services import notifications
+    from app.services.download_clients.factory import build_client
 
     try:
         async with _SL() as s:
@@ -308,3 +310,17 @@ async def _handle_imported(item: QueueItem) -> None:
             await notifications.on_import(event, event.file_path or "", event.quality)
     except Exception as exc:
         logger.debug("Import notification skipped: %s", exc)
+
+    # Delete the completed job from the download client so the source files
+    # in SAB's completed folder are removed — no duplicates on disk.
+    if item.sabnzbd_nzo_id and item.download_client_id:
+        try:
+            async with _SL() as s:
+                dc = await s.get(DownloadClient, item.download_client_id)
+            if dc is not None and dc.enabled:
+                client = build_client(dc)
+                delete = getattr(client, "delete_job", None)
+                if delete is not None:
+                    await delete(item.sabnzbd_nzo_id, delete_files=True)
+        except Exception as exc:
+            logger.debug("Post-import cleanup skipped: %s", exc)
