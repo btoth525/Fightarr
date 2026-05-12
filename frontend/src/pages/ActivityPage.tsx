@@ -82,6 +82,7 @@ export default function ActivityPage() {
     queryKey: ["queue"],
     queryFn: () => api.get<QueueItem[]>("/queue"),
     refetchInterval: 8_000,
+    placeholderData: (prev) => prev, // keep previous data visible while refetching — no loading flash
   });
 
   const { data: history = [], isLoading: hLoading } = useQuery({
@@ -89,6 +90,7 @@ export default function ActivityPage() {
     queryFn: () => api.get<QueueItem[]>("/queue/history"),
     enabled: tab === "history",
     refetchInterval: tab === "history" ? 15_000 : false,
+    placeholderData: (prev) => prev,
   });
 
   // Always fetch blocklist so the count badge shows immediately without clicking the tab
@@ -96,6 +98,7 @@ export default function ActivityPage() {
     queryKey: ["blocklist"],
     queryFn: () => api.get<BlocklistEntry[]>("/blocklist"),
     refetchInterval: 60_000,
+    placeholderData: (prev) => prev,
   });
 
   const removeQueueItem = useMutation({

@@ -170,6 +170,30 @@ class SABnzbdClient:
             logger.debug("Could not fetch SABnzbd complete_dir: %s", exc)
             return None
 
+    async def delete_job(self, job_id: str, *, delete_files: bool = True) -> bool:
+        """Remove a completed job from SABnzbd history and optionally delete its files.
+
+        Called after a successful Fightarr import so the source files in SAB's
+        completed folder are cleaned up automatically — no duplicates on disk.
+        """
+        try:
+            params = {
+                "output": "json",
+                "apikey": self.api_key,
+                "mode": "history",
+                "name": "delete",
+                "value": job_id,
+                "del_files": 1 if delete_files else 0,
+            }
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                r = await client.get(f"{self.host}/api", params=params)
+                r.raise_for_status()
+            logger.info("Deleted SABnzbd job %s (del_files=%s)", job_id, delete_files)
+            return True
+        except Exception as exc:
+            logger.warning("Could not delete SABnzbd job %s: %s", job_id, exc)
+            return False
+
     async def test_connection(self) -> bool:
         try:
             params = {"output": "json", "apikey": self.api_key, "mode": "version"}
